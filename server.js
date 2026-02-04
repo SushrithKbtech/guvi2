@@ -1,11 +1,11 @@
 /**
- * Agentic Honey-Pot API Server
- * Handles conversation requests and returns agent responses
+ * Agentic Honey-Pot API Server - GUVI Format
+ * Handles conversation requests matching GUVI requirements
  */
 
 const express = require('express');
 const cors = require('cors');
-const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
 require('dotenv').config();
 
 const HoneypotAgent = require('./honeypotAgent');
@@ -13,6 +13,7 @@ const HoneypotAgent = require('./honeypotAgent');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || 'honeypot-guvi-2026-secure-key';
+const GUVI_CALLBACK_URL = 'https://hackathon.guvi.in/api/updateHoneyPotFinalResult';
 
 // Middleware
 app.use(cors());
@@ -39,8 +40,8 @@ const authenticateApiKey = (req, res, next) => {
     next();
 };
 
-// In-memory conversation storage (for demo purposes)
-const conversations = new Map();
+// In-memory conversation storage (sessionId -> conversation data)
+const sessions = new Map();
 
 // Initialize agent
 const agent = new HoneypotAgent();
@@ -48,14 +49,14 @@ const agent = new HoneypotAgent();
 // Health check endpoint
 app.get('/', (req, res) => {
     res.json({
-        service: 'Agentic Honey-Pot API',
+        service: 'Agentic Honey-Pot API (GUVI Format)',
         status: 'active',
-        version: '1.0.0',
+        version: '2.0.0',
         endpoints: {
             conversation: 'POST /api/conversation',
             health: 'GET /health'
         },
-        documentation: 'Provide scammer message to receive believable victim response'
+        documentation: 'GUVI Hackathon - Agentic Honeypot for Scam Detection'
     });
 });
 
@@ -68,173 +69,185 @@ app.get('/health', (req, res) => {
 });
 
 /**
- * Main honeypot conversation endpoint
+ * Main honeypot conversation endpoint (GUVI Format)
  * POST /api/conversation
- * 
- * Request body:
- * {
- *   "conversationId": "optional-uuid",
- *   "scammerMessage": "Your account will be blocked. Click here: bit.ly/xyz",
- *   "nextIntent": "clarify_procedure|pretend_technical_issue|request_details|maintain_conversation",
- *   "stressScore": 5
- * }
- * 
- * Response:
- * {
- *   "reply": "Sir what is the problem? Please tell me",
- *   "phase": "SHOCK",
- *   "scamDetected": true,
- *   "intelSignals": {...},
- *   "agentNotes": "...",
- *   "shouldTerminate": false,
- *   "terminationReason": ""
- * }
  */
 app.post('/api/conversation', authenticateApiKey, async (req, res) => {
     try {
-        // Log incoming request for debugging
-        console.log('📥 Incoming request body:', JSON.stringify(req.body));
-        console.log('📥 Headers:', JSON.stringify(req.headers));
+        console.log('📥 Incoming GUVI request:', JSON.stringify(req.body, null, 2));
 
         const {
-            conversationId = uuidv4(),
-            scammerMessage = 'Test message from GUVI platform',
-            nextIntent = 'maintain_conversation',
-            stressScore = 5
+            sessionId,
+            message,
+            conversationHistory = [],
+            metadata = {}
         } = req.body;
 
-        // Use default message if empty string provided
-        const finalMessage = (scammerMessage && scammerMessage.trim()) || 'Test message from GUVI platform';
-
-        // Validation - only check type
-        if (typeof finalMessage !== 'string') {
+        // Validation
+        if (!sessionId) {
             return res.status(400).json({
                 error: 'Bad Request',
-                message: 'scammerMessage must be a string'
+                message: 'sessionId is required'
             });
         }
 
-        if (stressScore < 1 || stressScore > 10) {
+        if (!message || !message.text) {
             return res.status(400).json({
                 error: 'Bad Request',
-                message: 'stressScore must be between 1 and 10'
+                message: 'message.text is required'
             });
         }
 
-        const validIntents = [
-            'clarify_procedure',
-            'pretend_technical_issue',
-            'request_details',
-            'maintain_conversation'
-        ];
+        // Get or create session data
+        let sessionData = sessions.get(sessionId) || {
+            sessionId,
+            messages: [],
+            scamDetected: false,
+            intelligence: {
+                bankAccounts: [],
+                upiIds: [],
+                phishingLinks: [],
+                phoneNumbers: [],
+                employeeIds: [],
+                orgNames: [],
+                suspiciousKeywords: []
+            }
+        };
 
-        if (!validIntents.includes(nextIntent)) {
-            return res.status(400).json({
-                error: 'Bad Request',
-                message: `nextIntent must be one of: ${validIntents.join(', ')}`
-            });
-        }
+        // Build conversation history for agent
+        const agentHistory = conversationHistory.map(msg => ({
+            timestamp: msg.timestamp,
+            scammerMessage: msg.sender === 'scammer' ? msg.text : '',
+            agentReply: msg.sender === 'user' ? msg.text : '',
+            stressScore: 5
+        }));
 
-        // Get or create conversation history
-        let conversationHistory = conversations.get(conversationId) || [];
+        // Calculate stress score based on conversation length and urgency
+        const stressScore = Math.min(10, 5 + Math.floor(agentHistory.length / 2));
 
-        // Add current scammer message to history
-        conversationHistory.push({
-            timestamp: new Date().toISOString(),
-            scammerMessage: finalMessage,
-            stressScore
-        });
+        // Determine next intent based on conversation
+        const nextIntent = agentHistory.length === 0 ? 'clarify_procedure' :
+            agentHistory.length < 3 ? 'request_details' :
+                agentHistory.length < 6 ? 'pretend_technical_issue' :
+                    'maintain_conversation';
 
-        // Generate agent response (await for OpenAI support)
+        // Generate agent response
         const response = await agent.generateResponse(
-            finalMessage,
-            conversationHistory,
+            message.text,
+            agentHistory,
             nextIntent,
             stressScore
         );
 
-        // Update conversation history with agent response
-        conversationHistory[conversationHistory.length - 1].agentReply = response.reply;
-        conversationHistory[conversationHistory.length - 1].phase = response.phase;
-
-        // Store updated history
-        conversations.set(conversationId, conversationHistory);
-
-        // Clean up old conversations (if terminated or too old)
-        if (response.shouldTerminate) {
-            setTimeout(() => conversations.delete(conversationId), 60000); // Delete after 1 min
+        // Update session intelligence
+        if (response.intelSignals) {
+            Object.keys(response.intelSignals).forEach(key => {
+                if (Array.isArray(response.intelSignals[key])) {
+                    sessionData.intelligence[key] = [
+                        ...new Set([
+                            ...sessionData.intelligence[key] || [],
+                            ...response.intelSignals[key]
+                        ])
+                    ];
+                }
+            });
         }
 
-        // Return response (pure JSON, no markdown)
+        // Update scam detection
+        if (response.scamDetected) {
+            sessionData.scamDetected = true;
+        }
+
+        // Add current exchange to session
+        sessionData.messages.push({
+            scammer: message.text,
+            agent: response.reply,
+            timestamp: message.timestamp || new Date().toISOString()
+        });
+
+        // Store updated session
+        sessions.set(sessionId, sessionData);
+
+        // Check if should terminate and send final result
+        if (response.shouldTerminate || sessionData.messages.length >= 10) {
+            console.log('🎯 Conversation ending, sending final result to GUVI...');
+
+            // Send final result to GUVI callback
+            try {
+                const finalPayload = {
+                    sessionId: sessionId,
+                    scamDetected: sessionData.scamDetected,
+                    totalMessagesExchanged: sessionData.messages.length,
+                    extractedIntelligence: sessionData.intelligence,
+                    agentNotes: response.agentNotes || 'Conversation completed'
+                };
+
+                console.log('📤 Sending to GUVI:', JSON.stringify(finalPayload, null, 2));
+
+                await axios.post(GUVI_CALLBACK_URL, finalPayload, {
+                    timeout: 5000,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                console.log('✅ Successfully sent final result to GUVI');
+            } catch (callbackError) {
+                console.error('❌ Failed to send callback to GUVI:', callbackError.message);
+                // Don't fail the main response if callback fails
+            }
+
+            // Clean up session after sending
+            setTimeout(() => sessions.delete(sessionId), 60000);
+        }
+
+        // Return GUVI expected format
         res.json({
-            conversationId,
-            reply: response.reply,
-            phase: response.phase,
-            scamDetected: response.scamDetected,
-            intelSignals: response.intelSignals,
-            agentNotes: response.agentNotes,
-            shouldTerminate: response.shouldTerminate,
-            terminationReason: response.terminationReason
+            status: 'success',
+            reply: response.reply
         });
 
     } catch (error) {
         console.error('Error processing conversation:', error);
         res.status(500).json({
-            error: 'Internal Server Error',
+            status: 'error',
             message: 'Failed to process conversation request'
         });
     }
 });
 
 /**
- * Get conversation history (for debugging)
+ * Get session data (for debugging)
  */
-app.get('/api/conversation/:conversationId', authenticateApiKey, (req, res) => {
-    const { conversationId } = req.params;
-    const history = conversations.get(conversationId);
+app.get('/api/session/:sessionId', authenticateApiKey, (req, res) => {
+    const { sessionId } = req.params;
+    const sessionData = sessions.get(sessionId);
 
-    if (!history) {
+    if (!sessionData) {
         return res.status(404).json({
             error: 'Not Found',
-            message: 'Conversation not found'
+            message: 'Session not found'
         });
     }
 
-    res.json({
-        conversationId,
-        messageCount: history.length,
-        history
-    });
-});
-
-/**
- * Reset/delete a conversation
- */
-app.delete('/api/conversation/:conversationId', authenticateApiKey, (req, res) => {
-    const { conversationId } = req.params;
-    const existed = conversations.delete(conversationId);
-
-    res.json({
-        success: existed,
-        message: existed ? 'Conversation deleted' : 'Conversation not found'
-    });
+    res.json(sessionData);
 });
 
 // Global error handler
 app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);
     res.status(500).json({
-        error: 'Internal Server Error',
+        status: 'error',
         message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
     });
 });
 
 // Start server
 app.listen(PORT, () => {
-    console.log(`🍯 Agentic Honey-Pot API running on port ${PORT}`);
+    console.log(`🍯 Agentic Honey-Pot API (GUVI Format) running on port ${PORT}`);
     console.log(`📡 Environment: ${process.env.NODE_ENV}`);
     console.log(`🔑 API Key authentication: ${API_KEY ? 'ENABLED' : 'DISABLED'}`);
-    console.log(`\n✅ Server ready to receive requests`);
+    console.log(`\n✅ Server ready to receive GUVI requests`);
 });
 
 module.exports = app;
