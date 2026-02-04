@@ -82,14 +82,23 @@ class HoneypotAgent {
    * Generate agent response using OpenAI or templates
    */
   async generateResponse(scammerMessage, conversationHistory, nextIntent, stressScore) {
+    const startTime = Date.now();
+    console.log('⏱️ Agent.generateResponse started');
+
     const currentPhase = this.determinePhase(conversationHistory, stressScore);
+    console.log(`⏱️ Phase determined: ${currentPhase} (${Date.now() - startTime}ms)`);
+
     const intelSignals = this.extractIntelligence(scammerMessage, conversationHistory);
+    console.log(`⏱️ Intelligence extracted (${Date.now() - startTime}ms)`);
+
     const scamDetected = this.detectScamIndicators(scammerMessage, conversationHistory);
+    console.log(`⏱️ Scam detection complete (${Date.now() - startTime}ms)`);
 
     // Generate contextual reply (using OpenAI if enabled)
     let reply;
     if (this.useOpenAI) {
       try {
+        console.log('⏱️ Calling OpenAI...');
         reply = await this.craftReplyWithOpenAI(
           scammerMessage,
           currentPhase,
@@ -97,6 +106,7 @@ class HoneypotAgent {
           stressScore,
           conversationHistory
         );
+        console.log(`⏱️ OpenAI response received (${Date.now() - startTime}ms)`);
       } catch (error) {
         console.error('OpenAI error, falling back to templates:', error.message);
         reply = this.craftReplyWithTemplates(
@@ -108,6 +118,7 @@ class HoneypotAgent {
         );
       }
     } else {
+      console.log('⏱️ Using templates...');
       reply = this.craftReplyWithTemplates(
         scammerMessage,
         currentPhase,
@@ -115,6 +126,7 @@ class HoneypotAgent {
         stressScore,
         conversationHistory
       );
+      console.log(`⏱️ Template response generated (${Date.now() - startTime}ms)`);
     }
 
     // Check termination conditions
@@ -123,6 +135,8 @@ class HoneypotAgent {
       scamDetected,
       intelSignals
     );
+
+    console.log(`⏱️ Agent.generateResponse complete (${Date.now() - startTime}ms)`);
 
     return {
       reply,
