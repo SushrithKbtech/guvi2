@@ -92,6 +92,10 @@ app.get('/health', (req, res) => {
  */
 app.post('/api/conversation', authenticateApiKey, async (req, res) => {
     try {
+        // Log incoming request for debugging
+        console.log('📥 Incoming request body:', JSON.stringify(req.body));
+        console.log('📥 Headers:', JSON.stringify(req.headers));
+
         const {
             conversationId = uuidv4(),
             scammerMessage = 'Test message from GUVI platform',
