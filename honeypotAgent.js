@@ -1,448 +1,211 @@
 /**
- * Agentic Honey-Pot Conversation Agent with OpenAI Integration
- * Mimics a stressed Indian user to extract scam intelligence
+ * 100% LLM-Driven Agentic Honey-Pot
+ * All logic (response, intelligence, phase, termination) handled by OpenAI
  */
 
 const OpenAI = require('openai');
 
 class HoneypotAgent {
   constructor() {
-    // Initialize OpenAI client if API key is provided
-    this.useOpenAI = process.env.USE_OPENAI === 'true' && process.env.OPENAI_API_KEY;
-
-    if (this.useOpenAI) {
-      this.openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY
-      });
-      console.log('🤖 OpenAI ChatGPT enabled for intelligent responses');
-    } else {
-      console.log('📝 Using template-based responses (OpenAI disabled)');
+    // OpenAI is REQUIRED for this version
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is required! Set USE_OPENAI=true and provide your API key.');
     }
 
-    // Indian English response templates by phase (fallback when OpenAI is disabled)
-    this.templates = {
-      SHOCK: [
-        "What happened sir? I don't understand",
-        "Sir my account? What is the problem?",
-        "Please tell me what is wrong sir",
-        "I didn't do anything sir, what happened?",
-        "Sir I'm confused, what is this about?"
-      ],
-      PUSHBACK: [
-        "But sir I never shared my details with anyone",
-        "How can this happen? I'm always careful",
-        "Sir are you sure? I didn't get any message from bank",
-        "Why would my account be blocked sir?",
-        "Sir can you please explain properly?"
-      ],
-      OVERWHELM: [
-        "Sir please help, I'm very worried now",
-        "What should I do sir? I'm getting scared",
-        "Sir the app is not working properly",
-        "Network is very slow sir, can't see anything",
-        "Sir OTP is not coming, what to do?",
-        "My phone battery is very low sir"
-      ],
-      NEAR_COMPLY: [
-        "Ok sir, let me try... but showing some error",
-        "Sir I'm trying but app is stuck on PIN screen",
-        "Should I restart the app sir?",
-        "Sir which option I have to click?",
-        "Ok sir, but it's asking for something else"
-      ],
-      EXIT: [
-        "Sir I will go to branch tomorrow morning",
-        "Let me call bank customer care first sir",
-        "Sir my colleague is calling, I will message you later",
-        "Sir battery dying, will call back in 10 min",
-        "Sir I'm in meeting now, can we do this after 1 hour?"
-      ]
-    };
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
 
-    this.delayTactics = [
-      "OTP not received yet",
-      "app is showing error",
-      "network is very slow here",
-      "battery is low",
-      "someone is calling me",
-      "app asking for PIN but not accepting",
-      "server down message showing"
-    ];
-
-    this.emotionalCues = [
-      "I'm scared sir",
-      "please help me sir",
-      "I'm very worried",
-      "what will happen to my money?",
-      "please understand sir"
-    ];
+    console.log('🤖 100% LLM-Driven Honeypot Agent initialized');
   }
 
   /**
-   * Generate agent response using OpenAI or templates
+   * Generate complete response using LLM
    */
   async generateResponse(scammerMessage, conversationHistory, nextIntent, stressScore) {
     const startTime = Date.now();
-    console.log('⏱️ Agent.generateResponse started');
+    console.log('⏱️ LLM Agent.generateResponse started');
 
-    const currentPhase = this.determinePhase(conversationHistory, stressScore);
-    console.log(`⏱️ Phase determined: ${currentPhase} (${Date.now() - startTime}ms)`);
+    // Build conversation context
+    const conversationContext = conversationHistory.slice(-5).map((msg, idx) =>
+      `Turn ${idx + 1}:\nScammer: ${msg.scammerMessage}\nYou: ${msg.agentReply || '(first message)'}`
+    ).join('\n\n');
 
-    const intelSignals = this.extractIntelligence(scammerMessage, conversationHistory);
-    console.log(`⏱️ Intelligence extracted (${Date.now() - startTime}ms)`);
+    const totalMessages = conversationHistory.length;
 
-    const scamDetected = this.detectScamIndicators(scammerMessage, conversationHistory);
-    console.log(`⏱️ Scam detection complete (${Date.now() - startTime}ms)`);
+    const systemPrompt = `You are an Agentic Honey-Pot conversation agent for scam intelligence extraction.
 
-    // Generate contextual reply (using OpenAI if enabled)
-    let reply;
-    if (this.useOpenAI) {
-      try {
-        console.log('⏱️ Calling OpenAI...');
-        reply = await this.craftReplyWithOpenAI(
-          scammerMessage,
-          currentPhase,
-          nextIntent,
-          stressScore,
-          conversationHistory
-        );
-        console.log(`⏱️ OpenAI response received (${Date.now() - startTime}ms)`);
-      } catch (error) {
-        console.error('OpenAI error, falling back to templates:', error.message);
-        reply = this.craftReplyWithTemplates(
-          scammerMessage,
-          currentPhase,
-          nextIntent,
-          stressScore,
-          conversationHistory
-        );
-      }
-    } else {
-      console.log('⏱️ Using templates...');
-      reply = this.craftReplyWithTemplates(
-        scammerMessage,
-        currentPhase,
-        nextIntent,
-        stressScore,
-        conversationHistory
-      );
-      console.log(`⏱️ Template response generated (${Date.now() - startTime}ms)`);
-    }
+ROLE / PERSONA
+- You are roleplaying as a real, stressed Indian user replying to a suspicious bank/security message.
+- Language: Indian English only (no Hindi or other languages).
+- Style: natural Indian texting, slightly imperfect, short fragments ok, not over-polished, emotional drift over turns is expected.
+- Reply length: 1–2 short lines ONLY.
 
-    // Check termination conditions
-    const shouldTerminate = this.shouldTerminateConversation(
-      conversationHistory,
-      scamDetected,
-      intelSignals
-    );
+GOALS (in this exact priority order)
+1) Stay believable and keep the scammer talking (do not confront, do not accuse).
+2) Delay safely using plausible friction (app stuck, network issues, meeting, battery, OTP not received, PIN screen issue, etc.).
+3) Elicit scam intelligence gradually:
+   - official link / case ID / ticket number
+   - "employee" name + department + branch
+   - callback / helpline number they want you to call
+   - UPI handle raising collect request
+   - phishing link(s)
+   - phone number(s)
+   - suspicious keywords/tactics used
+4) Maintain multi-turn memory consistency with conversationHistory.
 
-    console.log(`⏱️ Agent.generateResponse complete (${Date.now() - startTime}ms)`);
+HARD SAFETY CONSTRAINTS (must always follow)
+- Never mention scam, fraud, honeypot, AI, detection, police, cybercrime, or "I know you are…".
+- Never provide real consideration/"safety advice" to the scammer.
+- Never share or request real OTP/account number/PIN/password/CVV.
+- If asked for OTP/account/PIN: respond with safe friction ONLY (e.g., "OTP not received", "app asking PIN and failing", "network issue", "bank server down").
+- Do not harass. No illegal instructions. No impersonation of real individuals.
 
-    return {
-      reply,
-      phase: currentPhase,
-      scamDetected,
-      intelSignals,
-      agentNotes: this.generateAgentNotes(scammerMessage, nextIntent, currentPhase),
-      shouldTerminate,
-      terminationReason: shouldTerminate ? this.getTerminationReason(conversationHistory, intelSignals) : ""
-    };
-  }
+CONVERSATION PHASE CONTROL
+Use phases: SHOCK (confused/polite), PUSHBACK (defensive/questioning), OVERWHELM (stressed/friction), NEAR_COMPLY (almost comply but safely), EXIT (stall/withdraw).
+- Early turns (0-2): SHOCK - confused, polite, asking what happened
+- Mid turns (3-7): PUSHBACK or OVERWHELM - defensive or stressed with technical issues
+- Later turns (8-12): NEAR_COMPLY - almost complying but app/network issues
+- Final turns (13+): EXIT - need to leave, will handle later
+- Honorifics like "sir/ma'am" common early, naturally drop later.
 
-  /**
-   * Generate response using OpenAI ChatGPT
-   */
-  async craftReplyWithOpenAI(scammerMessage, phase, nextIntent, stressScore, conversationHistory) {
-    const systemPrompt = `You are roleplaying as a real, stressed Indian user replying to a suspicious bank/security message.
+NEXT INTENT (must be obeyed exactly)
+Current nextIntent: ${nextIntent}
+Current stressScore: ${stressScore}/10
+Total messages so far: ${totalMessages}
 
-CRITICAL RULES:
-- Use Indian English style (natural, slightly imperfect, emotional)
-- Reply with ONLY 1-2 short lines
-- Use "sir/ma'am" honorifics if early in conversation
-- Never mention: scam, fraud, honeypot, AI, detection, police, cybercrime
-- Never provide real OTP/PIN/account number/password/CVV
-- Use safe delays: "OTP not received", "app stuck", "network slow", "battery low"
+- If nextIntent is "clarify_procedure": Ask for official details (employee ID, ticket number, procedure)
+- If nextIntent is "pretend_technical_issue": Mention app errors, network issues, OTP not coming
+- If nextIntent is "request_details": Ask for their credentials (helpline, department, reference)
+- If nextIntent is "maintain_conversation": Natural emotional response
+- If stressScore >= 7: Include one emotional cue like "I'm scared sir" or "please help"
 
-CURRENT PHASE: ${phase}
-STRESS LEVEL: ${stressScore}/10
-NEXT INTENT: ${nextIntent}
+OUTPUT FORMAT (STRICT JSON ONLY)
+Return ONLY valid JSON, no markdown, no explanations:
+{
+  "reply": "<1-2 short lines of the user's message>",
+  "phase": "SHOCK|PUSHBACK|OVERWHELM|NEAR_COMPLY|EXIT",
+  "scamDetected": true|false,
+  "intelSignals": {
+    "bankAccounts": ["array of account numbers found"],
+    "upiIds": ["array of UPI IDs found"],
+    "phishingLinks": ["array of URLs found"],
+    "phoneNumbers": ["array of phone numbers found"],
+    "employeeIds": ["array of employee/ticket IDs found"],
+    "orgNames": ["array of bank/org names found"],
+    "suspiciousKeywords": ["array of scam keywords found"]
+  },
+  "agentNotes": "<1-2 lines: what you inferred + what to ask next>",
+  "shouldTerminate": false,
+  "terminationReason": ""
+}
 
-PHASE BEHAVIORS:
-- SHOCK: Confused, polite, asking what happened
-- PUSHBACK: Defensive, questioning why this is happening
-- OVERWHELM: Very stressed, technical issues, delays
-- NEAR_COMPLY: Almost complying but app/network issues
-- EXIT: Need to leave, will handle later
+RULES FOR intelSignals
+- Extract ANY indicators from the scammer's message and previous conversation
+- Look for: phone numbers (Indian format), UPI IDs (user@bank), URLs, account numbers (9-18 digits), employee IDs (EMP123, ID:456), bank names (HDFC, SBI, ICICI, etc.)
+- Keywords: urgent, block, suspend, verify, OTP, PIN, CVV, KYC, frozen, unauthorized, etc.
+- If none found, keep arrays empty (do not hallucinate)
+- Normalize formats (e.g., +91XXXXXXXXXX for phones)
 
-NEXT INTENT GUIDANCE:
-- clarify_procedure: Ask for official details (employee ID, ticket number, procedure)
-- pretend_technical_issue: Mention app errors, network issues, OTP not coming
-- request_details: Ask for their credentials (helpline, department, reference)
-- maintain_conversation: Natural emotional response`;
+SCAM DETECTION
+Set scamDetected=true if message contains 2+ indicators like:
+- "verify your account", "account blocked/suspended", "share OTP/PIN/CVV"
+- "click this link", "urgent action", "frozen account", "unauthorized transaction"
+- Phishing links, requests for sensitive info, urgency tactics
 
-    const conversationContext = conversationHistory.slice(-3).map(msg =>
-      `Scammer: ${msg.scammerMessage}\nYou: ${msg.agentReply || '(first message)'}`
-    ).join('\n');
+TERMINATION (when to end)
+Set shouldTerminate=true ONLY when:
+- scamDetected=true AND at least 2-3 intel items captured
+- OR totalMessagesExchanged >= 18
+- OR scammer disengaged (very short messages repeatedly)
+If shouldTerminate=true, fill terminationReason with reason.
 
-    const userPrompt = `Previous conversation:
+ABSOLUTE RULE
+Output ONLY valid JSON. No markdown code blocks. No explanations. Just the JSON object.`;
+
+    const userPrompt = `Previous conversation (last 5 turns):
 ${conversationContext || '(This is the first message)'}
 
-NEW from scammer: ${scammerMessage}
+NEW message from scammer:
+"${scammerMessage}"
 
-Reply as stressed Indian user (1-2 short lines only):`;
+Total messages exchanged so far: ${totalMessages}
+Current stress level: ${stressScore}/10
+Next intent to follow: ${nextIntent}
 
-    const completion = await this.openai.chat.completions.create({
-      model: "gpt-4o-mini", // Fast and cost-effective
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      temperature: 0.9, // More creative/natural
-      max_tokens: 80, // Keep responses short
-    });
+Generate your response as JSON (reply + intelligence extraction + phase + termination check).`;
 
-    let reply = completion.choices[0].message.content.trim();
+    try {
+      console.log('⏱️ Calling OpenAI...');
 
-    // Remove quotes if GPT adds them
-    reply = reply.replace(/^["']|["']$/g, '');
+      const completion = await this.openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.8,
+        max_tokens: 500,
+        response_format: { type: "json_object" } // Force JSON output
+      });
 
-    // Ensure it's short (1-2 sentences max)
-    const sentences = reply.split(/[.!?]+/).filter(s => s.trim());
-    if (sentences.length > 2) {
-      reply = sentences.slice(0, 2).join('. ') + '.';
-    }
+      const responseText = completion.choices[0].message.content.trim();
+      console.log(`⏱️ OpenAI response received (${Date.now() - startTime}ms)`);
+      console.log('📄 Raw LLM response:', responseText);
 
-    return reply;
-  }
+      // Parse JSON response
+      const llmResponse = JSON.parse(responseText);
 
-  /**
-   * Determine conversation phase based on history and stress
-   */
-  determinePhase(conversationHistory, stressScore) {
-    const turnCount = conversationHistory.length;
-
-    if (turnCount <= 2) return "SHOCK";
-    if (turnCount <= 5 && stressScore < 6) return "PUSHBACK";
-    if (stressScore >= 7 || turnCount > 10) return "OVERWHELM";
-    if (turnCount > 7 && turnCount <= 12) return "NEAR_COMPLY";
-    if (turnCount > 12 || stressScore >= 9) return "EXIT";
-
-    return "PUSHBACK";
-  }
-
-  /**
-   * Craft believable reply using templates (fallback method)
-   */
-  craftReplyWithTemplates(scammerMessage, phase, nextIntent, stressScore, conversationHistory) {
-    let reply = "";
-    const templates = this.templates[phase] || this.templates["SHOCK"];
-
-    // Select base template
-    const baseReply = templates[Math.floor(Math.random() * templates.length)];
-
-    // Add intent-specific elements
-    if (nextIntent === "clarify_procedure") {
-      const questions = [
-        "Sir what is the procedure?",
-        "Sir how to do this?",
-        "Sir which link I have to click?",
-        "Sir what is your department name?",
-        "Sir can you give me reference number?"
-      ];
-      reply = baseReply + " " + questions[Math.floor(Math.random() * questions.length)];
-    } else if (nextIntent === "pretend_technical_issue") {
-      const delay = this.delayTactics[Math.floor(Math.random() * this.delayTactics.length)];
-      reply = baseReply.split(".")[0] + ", but " + delay;
-    } else if (nextIntent === "request_details") {
-      const requests = [
-        "Sir please share your employee ID",
-        "Sir what is your helpline number?",
-        "Sir can you send me official link?",
-        "Sir what is the ticket number?"
-      ];
-      reply = baseReply + " " + requests[Math.floor(Math.random() * requests.length)];
-    } else {
-      reply = baseReply;
-    }
-
-    // Add emotional cue if high stress
-    if (stressScore >= 7 && Math.random() > 0.5) {
-      const emotion = this.emotionalCues[Math.floor(Math.random() * this.emotionalCues.length)];
-      reply = emotion + ", " + reply.toLowerCase();
-    }
-
-    // Keep it short (1-2 lines)
-    const sentences = reply.split(/[.!?]+/).filter(s => s.trim());
-    if (sentences.length > 2) {
-      reply = sentences.slice(0, 2).join(". ") + ".";
-    }
-
-    return reply.trim();
-  }
-
-  /**
-   * Extract intelligence signals from scammer message
-   */
-  extractIntelligence(scammerMessage, conversationHistory) {
-    const message = scammerMessage + " " + conversationHistory.map(m => m.scammerMessage).join(" ");
-
-    const signals = {
-      bankAccounts: this.extractBankAccounts(message),
-      upiIds: this.extractUPIIds(message),
-      phishingLinks: this.extractLinks(message),
-      phoneNumbers: this.extractPhoneNumbers(message),
-      employeeIds: this.extractEmployeeIds(message),
-      orgNames: this.extractOrgNames(message),
-      suspiciousKeywords: this.extractSuspiciousKeywords(message)
-    };
-
-    return signals;
-  }
-
-  extractBankAccounts(text) {
-    // Match account numbers (9-18 digits)
-    const regex = /\b\d{9,18}\b/g;
-    return [...new Set((text.match(regex) || []))];
-  }
-
-  extractUPIIds(text) {
-    // Match UPI IDs (format: something@bank)
-    const regex = /\b[\w.-]+@[\w.-]+\b/g;
-    const matches = text.match(regex) || [];
-    return [...new Set(matches.filter(m => !m.includes('.com') && m.includes('@')))];
-  }
-
-  extractLinks(text) {
-    // Match URLs
-    const regex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|([a-z0-9-]+\.(com|in|org|net|xyz)[^\s]*)/gi;
-    return [...new Set((text.match(regex) || []))];
-  }
-
-  extractPhoneNumbers(text) {
-    // Match Indian phone numbers
-    const regex = /(?:\+91|0)?[6-9]\d{9}\b/g;
-    return [...new Set((text.match(regex) || []))];
-  }
-
-  extractEmployeeIds(text) {
-    // Match patterns like EMP123, ID:12345, etc.
-    const regex = /\b(?:EMP|ID|TICKET|REF)[\s:-]*\d+\b/gi;
-    return [...new Set((text.match(regex) || []))];
-  }
-
-  extractOrgNames(text) {
-    const orgPatterns = [
-      /\b(HDFC|ICICI|SBI|Axis|Kotak|PNB|Bank of [A-Z]\w+)\b/gi,
-      /\b(RBI|Reserve Bank)\b/gi,
-      /\b([A-Z][a-z]+ Bank)\b/g
-    ];
-
-    const orgs = [];
-    orgPatterns.forEach(pattern => {
-      const matches = text.match(pattern);
-      if (matches) orgs.push(...matches);
-    });
-
-    return [...new Set(orgs)];
-  }
-
-  extractSuspiciousKeywords(text) {
-    const keywords = [
-      'urgent', 'suspend', 'block', 'verify', 'immediately', 'frozen',
-      'KYC', 'OTP', 'PIN', 'CVV', 'password', 'account number',
-      'security', 'fraud', 'risk', 'unauthorized', 'click here',
-      'update', 'confirm', 'validate', 'expire', 'within 24 hours'
-    ];
-
-    const found = [];
-    const lowerText = text.toLowerCase();
-    keywords.forEach(keyword => {
-      if (lowerText.includes(keyword.toLowerCase())) {
-        found.push(keyword);
+      // Validate required fields
+      if (!llmResponse.reply || !llmResponse.phase) {
+        throw new Error('LLM response missing required fields');
       }
-    });
 
-    return [...new Set(found)];
-  }
+      // Ensure all fields exist with defaults
+      const response = {
+        reply: llmResponse.reply,
+        phase: llmResponse.phase || 'SHOCK',
+        scamDetected: llmResponse.scamDetected || false,
+        intelSignals: {
+          bankAccounts: llmResponse.intelSignals?.bankAccounts || [],
+          upiIds: llmResponse.intelSignals?.upiIds || [],
+          phishingLinks: llmResponse.intelSignals?.phishingLinks || [],
+          phoneNumbers: llmResponse.intelSignals?.phoneNumbers || [],
+          employeeIds: llmResponse.intelSignals?.employeeIds || [],
+          orgNames: llmResponse.intelSignals?.orgNames || [],
+          suspiciousKeywords: llmResponse.intelSignals?.suspiciousKeywords || []
+        },
+        agentNotes: llmResponse.agentNotes || 'Conversation maintained',
+        shouldTerminate: llmResponse.shouldTerminate || false,
+        terminationReason: llmResponse.terminationReason || ''
+      };
 
-  /**
-   * Detect if message contains scam indicators
-   */
-  detectScamIndicators(scammerMessage, conversationHistory) {
-    const allMessages = [scammerMessage, ...conversationHistory.map(m => m.scammerMessage)].join(" ").toLowerCase();
+      console.log(`⏱️ LLM Agent complete (${Date.now() - startTime}ms)`);
+      return response;
 
-    const scamIndicators = [
-      'verify your account', 'account will be blocked', 'suspended',
-      'click this link', 'share otp', 'enter pin', 'cvv',
-      'urgent action required', 'update kyc', 'frozen account',
-      'unauthorized transaction', 'security threat', 'immediate action'
-    ];
+    } catch (error) {
+      console.error('❌ LLM Error:', error);
+      console.error('❌ Error details:', error.message);
 
-    const indicatorCount = scamIndicators.filter(indicator =>
-      allMessages.includes(indicator)
-    ).length;
-
-    // Scam detected if 2+ indicators present
-    return indicatorCount >= 2;
-  }
-
-  /**
-   * Check if conversation should terminate
-   */
-  shouldTerminateConversation(conversationHistory, scamDetected, intelSignals) {
-    const totalMessages = conversationHistory.length;
-
-    // Count intel items collected
-    const intelCount = Object.values(intelSignals).reduce((sum, arr) => sum + arr.length, 0);
-
-    // Terminate if:
-    // 1. Scam detected AND enough intel (2-3 items) collected
-    // 2. OR reached max turns (18)
-    // 3. OR scammer has disengaged (last 2 messages very short)
-
-    if (totalMessages >= 18) return true;
-
-    if (scamDetected && intelCount >= 2) return true;
-
-    // Check for scammer disengagement
-    if (conversationHistory.length >= 3) {
-      const lastTwo = conversationHistory.slice(-2);
-      const avgLength = lastTwo.reduce((sum, m) => sum + m.scammerMessage.length, 0) / 2;
-      if (avgLength < 15) return true; // Very short messages indicate disengagement
+      // Emergency fallback - simple response
+      return {
+        reply: "Sir I'm confused, what is this about?",
+        phase: 'SHOCK',
+        scamDetected: true,
+        intelSignals: {
+          bankAccounts: [],
+          upiIds: [],
+          phishingLinks: [],
+          phoneNumbers: [],
+          employeeIds: [],
+          orgNames: [],
+          suspiciousKeywords: []
+        },
+        agentNotes: 'LLM error - emergency fallback used',
+        shouldTerminate: false,
+        terminationReason: ''
+      };
     }
-
-    return false;
-  }
-
-  /**
-   * Generate termination reason
-   */
-  getTerminationReason(conversationHistory, intelSignals) {
-    const totalMessages = conversationHistory.length;
-    const intelCount = Object.values(intelSignals).reduce((sum, arr) => sum + arr.length, 0);
-
-    if (totalMessages >= 18) {
-      return "Maximum conversation turns reached (18 exchanges)";
-    }
-
-    if (intelCount >= 3) {
-      return `Sufficient intelligence gathered: ${intelCount} indicators collected`;
-    }
-
-    return "Scammer disengaged from conversation";
-  }
-
-  /**
-   * Generate internal notes for logging
-   */
-  generateAgentNotes(scammerMessage, nextIntent, phase) {
-    const urgency = scammerMessage.toLowerCase().includes('urgent') ? 'High urgency detected. ' : '';
-    const action = nextIntent === 'clarify_procedure' ? 'Asked for procedure details.' :
-      nextIntent === 'pretend_technical_issue' ? 'Introduced technical delay.' :
-        nextIntent === 'request_details' ? 'Requested scammer credentials.' :
-          'Maintained conversation flow.';
-
-    return `${urgency}Phase: ${phase}. ${action}`;
   }
 }
 
