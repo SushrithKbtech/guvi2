@@ -132,12 +132,14 @@ app.post('/api/conversation', authenticateApiKey, async (req, res) => {
                     'maintain_conversation';
 
         // Generate agent response
+        console.log('🤖 Calling agent.generateResponse with:', { text: message.text, historyLength: agentHistory.length, nextIntent, stressScore });
         const response = await agent.generateResponse(
             message.text,
             agentHistory,
             nextIntent,
             stressScore
         );
+        console.log('✅ Agent response received:', response.reply);
 
         // Update session intelligence
         if (response.intelSignals) {
@@ -202,13 +204,17 @@ app.post('/api/conversation', authenticateApiKey, async (req, res) => {
         }
 
         // Return GUVI expected format
+        console.log('📤 Sending response to GUVI:', { status: 'success', reply: response.reply });
         res.json({
             status: 'success',
             reply: response.reply
         });
+        console.log('✅ Response sent successfully!');
 
     } catch (error) {
-        console.error('Error processing conversation:', error);
+        console.error('❌ ERROR in conversation handler:', error);
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error stack:', error.stack);
         res.status(500).json({
             status: 'error',
             message: 'Failed to process conversation request'
