@@ -90,7 +90,7 @@ app.get('/health', (req, res) => {
  *   "terminationReason": ""
  * }
  */
-app.post('/api/conversation', authenticateApiKey, (req, res) => {
+app.post('/api/conversation', authenticateApiKey, async (req, res) => {
     try {
         const {
             conversationId = uuidv4(),
@@ -138,8 +138,8 @@ app.post('/api/conversation', authenticateApiKey, (req, res) => {
             stressScore
         });
 
-        // Generate agent response
-        const response = agent.generateResponse(
+        // Generate agent response (await for OpenAI support)
+        const response = await agent.generateResponse(
             scammerMessage,
             conversationHistory,
             nextIntent,

@@ -1,11 +1,25 @@
 /**
- * Agentic Honey-Pot Conversation Agent
+ * Agentic Honey-Pot Conversation Agent with OpenAI Integration
  * Mimics a stressed Indian user to extract scam intelligence
  */
 
+const OpenAI = require('openai');
+
 class HoneypotAgent {
   constructor() {
-    // Indian English response templates by phase
+    // Initialize OpenAI client if API key is provided
+    this.useOpenAI = process.env.USE_OPENAI === 'true' && process.env.OPENAI_API_KEY;
+
+    if (this.useOpenAI) {
+      this.openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
+      console.log('🤖 OpenAI ChatGPT enabled for intelligent responses');
+    } else {
+      console.log('📝 Using template-based responses (OpenAI disabled)');
+    }
+
+    // Indian English response templates by phase (fallback when OpenAI is disabled)
     this.templates = {
       SHOCK: [
         "What happened sir? I don't understand",
@@ -65,21 +79,43 @@ class HoneypotAgent {
   }
 
   /**
-   * Generate agent response based on conversation context
+   * Generate agent response using OpenAI or templates
    */
-  generateResponse(scammerMessage, conversationHistory, nextIntent, stressScore) {
+  async generateResponse(scammerMessage, conversationHistory, nextIntent, stressScore) {
     const currentPhase = this.determinePhase(conversationHistory, stressScore);
     const intelSignals = this.extractIntelligence(scammerMessage, conversationHistory);
     const scamDetected = this.detectScamIndicators(scammerMessage, conversationHistory);
-    
-    // Generate contextual reply
-    const reply = this.craftReply(
-      scammerMessage,
-      currentPhase,
-      nextIntent,
-      stressScore,
-      conversationHistory
-    );
+
+    // Generate contextual reply (using OpenAI if enabled)
+    let reply;
+    if (this.useOpenAI) {
+      try {
+        reply = await this.craftReplyWithOpenAI(
+          scammerMessage,
+          currentPhase,
+          nextIntent,
+          stressScore,
+          conversationHistory
+        );
+      } catch (error) {
+        console.error('OpenAI error, falling back to templates:', error.message);
+        reply = this.craftReplyWithTemplates(
+          scammerMessage,
+          currentPhase,
+          nextIntent,
+          stressScore,
+          conversationHistory
+        );
+      }
+    } else {
+      reply = this.craftReplyWithTemplates(
+        scammerMessage,
+        currentPhase,
+        nextIntent,
+        stressScore,
+        conversationHistory
+      );
+    }
 
     // Check termination conditions
     const shouldTerminate = this.shouldTerminateConversation(
@@ -100,6 +136,72 @@ class HoneypotAgent {
   }
 
   /**
+   * Generate response using OpenAI ChatGPT
+   */
+  async craftReplyWithOpenAI(scammerMessage, phase, nextIntent, stressScore, conversationHistory) {
+    const systemPrompt = `You are roleplaying as a real, stressed Indian user replying to a suspicious bank/security message.
+
+CRITICAL RULES:
+- Use Indian English style (natural, slightly imperfect, emotional)
+- Reply with ONLY 1-2 short lines
+- Use "sir/ma'am" honorifics if early in conversation
+- Never mention: scam, fraud, honeypot, AI, detection, police, cybercrime
+- Never provide real OTP/PIN/account number/password/CVV
+- Use safe delays: "OTP not received", "app stuck", "network slow", "battery low"
+
+CURRENT PHASE: ${phase}
+STRESS LEVEL: ${stressScore}/10
+NEXT INTENT: ${nextIntent}
+
+PHASE BEHAVIORS:
+- SHOCK: Confused, polite, asking what happened
+- PUSHBACK: Defensive, questioning why this is happening
+- OVERWHELM: Very stressed, technical issues, delays
+- NEAR_COMPLY: Almost complying but app/network issues
+- EXIT: Need to leave, will handle later
+
+NEXT INTENT GUIDANCE:
+- clarify_procedure: Ask for official details (employee ID, ticket number, procedure)
+- pretend_technical_issue: Mention app errors, network issues, OTP not coming
+- request_details: Ask for their credentials (helpline, department, reference)
+- maintain_conversation: Natural emotional response`;
+
+    const conversationContext = conversationHistory.slice(-3).map(msg =>
+      `Scammer: ${msg.scammerMessage}\nYou: ${msg.agentReply || '(first message)'}`
+    ).join('\n');
+
+    const userPrompt = `Previous conversation:
+${conversationContext || '(This is the first message)'}
+
+NEW from scammer: ${scammerMessage}
+
+Reply as stressed Indian user (1-2 short lines only):`;
+
+    const completion = await this.openai.chat.completions.create({
+      model: "gpt-4o-mini", // Fast and cost-effective
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.9, // More creative/natural
+      max_tokens: 80, // Keep responses short
+    });
+
+    let reply = completion.choices[0].message.content.trim();
+
+    // Remove quotes if GPT adds them
+    reply = reply.replace(/^["']|["']$/g, '');
+
+    // Ensure it's short (1-2 sentences max)
+    const sentences = reply.split(/[.!?]+/).filter(s => s.trim());
+    if (sentences.length > 2) {
+      reply = sentences.slice(0, 2).join('. ') + '.';
+    }
+
+    return reply;
+  }
+
+  /**
    * Determine conversation phase based on history and stress
    */
   determinePhase(conversationHistory, stressScore) {
@@ -115,12 +217,12 @@ class HoneypotAgent {
   }
 
   /**
-   * Craft believable reply matching phase and intent
+   * Craft believable reply using templates (fallback method)
    */
-  craftReply(scammerMessage, phase, nextIntent, stressScore, conversationHistory) {
+  craftReplyWithTemplates(scammerMessage, phase, nextIntent, stressScore, conversationHistory) {
     let reply = "";
     const templates = this.templates[phase] || this.templates["SHOCK"];
-    
+
     // Select base template
     const baseReply = templates[Math.floor(Math.random() * templates.length)];
 
@@ -169,7 +271,7 @@ class HoneypotAgent {
    */
   extractIntelligence(scammerMessage, conversationHistory) {
     const message = scammerMessage + " " + conversationHistory.map(m => m.scammerMessage).join(" ");
-    
+
     const signals = {
       bankAccounts: this.extractBankAccounts(message),
       upiIds: this.extractUPIIds(message),
@@ -220,13 +322,13 @@ class HoneypotAgent {
       /\b(RBI|Reserve Bank)\b/gi,
       /\b([A-Z][a-z]+ Bank)\b/g
     ];
-    
+
     const orgs = [];
     orgPatterns.forEach(pattern => {
       const matches = text.match(pattern);
       if (matches) orgs.push(...matches);
     });
-    
+
     return [...new Set(orgs)];
   }
 
@@ -237,7 +339,7 @@ class HoneypotAgent {
       'security', 'fraud', 'risk', 'unauthorized', 'click here',
       'update', 'confirm', 'validate', 'expire', 'within 24 hours'
     ];
-    
+
     const found = [];
     const lowerText = text.toLowerCase();
     keywords.forEach(keyword => {
@@ -245,7 +347,7 @@ class HoneypotAgent {
         found.push(keyword);
       }
     });
-    
+
     return [...new Set(found)];
   }
 
@@ -254,7 +356,7 @@ class HoneypotAgent {
    */
   detectScamIndicators(scammerMessage, conversationHistory) {
     const allMessages = [scammerMessage, ...conversationHistory.map(m => m.scammerMessage)].join(" ").toLowerCase();
-    
+
     const scamIndicators = [
       'verify your account', 'account will be blocked', 'suspended',
       'click this link', 'share otp', 'enter pin', 'cvv',
@@ -262,7 +364,7 @@ class HoneypotAgent {
       'unauthorized transaction', 'security threat', 'immediate action'
     ];
 
-    const indicatorCount = scamIndicators.filter(indicator => 
+    const indicatorCount = scamIndicators.filter(indicator =>
       allMessages.includes(indicator)
     ).length;
 
@@ -275,26 +377,26 @@ class HoneypotAgent {
    */
   shouldTerminateConversation(conversationHistory, scamDetected, intelSignals) {
     const totalMessages = conversationHistory.length;
-    
+
     // Count intel items collected
     const intelCount = Object.values(intelSignals).reduce((sum, arr) => sum + arr.length, 0);
-    
+
     // Terminate if:
     // 1. Scam detected AND enough intel (2-3 items) collected
     // 2. OR reached max turns (18)
     // 3. OR scammer has disengaged (last 2 messages very short)
-    
+
     if (totalMessages >= 18) return true;
-    
+
     if (scamDetected && intelCount >= 2) return true;
-    
+
     // Check for scammer disengagement
     if (conversationHistory.length >= 3) {
       const lastTwo = conversationHistory.slice(-2);
       const avgLength = lastTwo.reduce((sum, m) => sum + m.scammerMessage.length, 0) / 2;
       if (avgLength < 15) return true; // Very short messages indicate disengagement
     }
-    
+
     return false;
   }
 
@@ -304,15 +406,15 @@ class HoneypotAgent {
   getTerminationReason(conversationHistory, intelSignals) {
     const totalMessages = conversationHistory.length;
     const intelCount = Object.values(intelSignals).reduce((sum, arr) => sum + arr.length, 0);
-    
+
     if (totalMessages >= 18) {
       return "Maximum conversation turns reached (18 exchanges)";
     }
-    
+
     if (intelCount >= 3) {
       return `Sufficient intelligence gathered: ${intelCount} indicators collected`;
     }
-    
+
     return "Scammer disengaged from conversation";
   }
 
@@ -322,10 +424,10 @@ class HoneypotAgent {
   generateAgentNotes(scammerMessage, nextIntent, phase) {
     const urgency = scammerMessage.toLowerCase().includes('urgent') ? 'High urgency detected. ' : '';
     const action = nextIntent === 'clarify_procedure' ? 'Asked for procedure details.' :
-                   nextIntent === 'pretend_technical_issue' ? 'Introduced technical delay.' :
-                   nextIntent === 'request_details' ? 'Requested scammer credentials.' :
-                   'Maintained conversation flow.';
-    
+      nextIntent === 'pretend_technical_issue' ? 'Introduced technical delay.' :
+        nextIntent === 'request_details' ? 'Requested scammer credentials.' :
+          'Maintained conversation flow.';
+
     return `${urgency}Phase: ${phase}. ${action}`;
   }
 }
