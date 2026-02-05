@@ -204,12 +204,58 @@ REMEMBER:
 - Document scammer behavior in agentNotes
 - Stay calm and defensive, never confrontational`;
 
+
+    // Extract what questions were already asked from conversation history
+    const askedQuestions = new Set();
+    conversationHistory.forEach(msg => {
+      if (msg.sender === 'honeypot') {
+        const text = msg.text.toLowerCase();
+        if (text.includes('case reference') || text.includes('complaint') || text.includes('reference number')) askedQuestions.add('case_reference');
+        if (text.includes('your name') || text.includes('full name')) askedQuestions.add('name');
+        if (text.includes('department')) askedQuestions.add('department');
+        if (text.includes('callback') || text.includes('phone number') || text.includes('contact number')) askedQuestions.add('callback_number');
+        if (text.includes('email')) askedQuestions.add('email');
+        if (text.includes('transaction id') || text.includes('transaction')) askedQuestions.add('transaction_id');
+        if (text.includes('merchant')) askedQuestions.add('merchant');
+        if (text.includes('amount')) askedQuestions.add('amount');
+        if (text.includes('link') || text.includes('url') || text.includes('domain')) askedQuestions.add('link');
+        if (text.includes('app') || text.includes('software') || text.includes('download')) askedQuestions.add('app');
+        if (text.includes('upi')) askedQuestions.add('upi');
+        if (text.includes('employee id') || text.includes('id')) askedQuestions.add('employee_id');
+        if (text.includes('supervisor') || text.includes('manager')) askedQuestions.add('supervisor');
+        if (text.includes('ifsc') || text.includes('branch')) askedQuestions.add('ifsc');
+      }
+    });
+
+    const questionsAsked = Array.from(askedQuestions).join(', ') || 'none';
+
     const userPrompt = `History:
 ${conversationContext}
 
 NEW: "${scammerMessage}"
 Stress: ${stressScore}/10
 Intent: ${nextIntent}
+
+CRITICAL - QUESTIONS ALREADY ASKED: ${questionsAsked}
+
+DO NOT ASK ABOUT: ${questionsAsked}
+
+INSTEAD, ASK ABOUT SOMETHING NEW FROM THIS LIST (that you haven't asked yet):
+- Case reference number (if not asked)
+- Scammer's full name (if not asked)
+- Department name (if not asked)
+- Callback phone number (if not asked)
+- Official email address (if not asked)
+- Transaction ID (if not asked)
+- Merchant name (if not asked)
+- Amount (if not asked)
+- Verification link/domain (if not asked)
+- App name to download (if not asked)
+- UPI handle (if not asked)
+- Employee ID (if not asked)
+- Supervisor name (if not asked)
+- IFSC code (if not asked)
+- Branch location (if not asked)
 
 Generate JSON response.`;
 
