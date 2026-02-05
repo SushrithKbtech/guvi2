@@ -225,74 +225,72 @@ REMEMBER:
     };
 
     // Scan ALL previous messages to see what intel the SCAMMER has PROVIDED
+    // NOTE: Server transforms data - messages have scammerMessage/agentReply fields
     conversationHistory.forEach(msg => {
-      if (!msg || !msg.text) return; // Safety check
-      const text = msg.text.toLowerCase();
+      if (!msg || !msg.scammerMessage) return; // Safety check - skip empty scammer messages
+      const text = msg.scammerMessage.toLowerCase();
 
-      // ONLY check scammer messages for intel they actually provided
-      if (msg.sender === 'scammer') {
-        // Case/Reference ID - ULTRA FLEXIBLE - match anything with ref/case/reference + numbers
-        if (/ref|reference|case|complaint|ticket/i.test(msg.text) && /\d{3,}/i.test(msg.text)) {
-          extractionState.caseReference = true;
-        }
+      // Case/Reference ID - ULTRA FLEXIBLE - match anything with ref/case/reference + numbers
+      if (/ref|reference|case|complaint|ticket/i.test(msg.scammerMessage) && /\d{3,}/i.test(msg.scammerMessage)) {
+        extractionState.caseReference = true;
+      }
 
-        // Scammer name (look for "my name is" or "this is")
-        if (/my name is|this is|i am|i'm\s+[A-Z][a-z]+/i.test(msg.text)) {
-          extractionState.scammerName = true;
-        }
+      // Scammer name (look for "my name is" or "this is")
+      if (/my name is|this is|i am|i'm\s+[A-Z][a-z]+/i.test(msg.scammerMessage)) {
+        extractionState.scammerName = true;
+      }
 
-        // Department
-        if (/department|team|division|fraud prevention|security team|customer care/i.test(text)) {
-          extractionState.department = true;
-        }
+      // Department
+      if (/department|team|division|fraud prevention|security team|customer care/i.test(text)) {
+        extractionState.department = true;
+      }
 
-        // Phone numbers
-        if (/\d{10}|\+91[-\s]?\d{10}|call.*\d{3,}/i.test(msg.text)) {
-          extractionState.callbackNumber = true;
-        }
+      // Phone numbers
+      if (/\d{10}|\+91[-\s]?\d{10}|call.*\d{3,}/i.test(msg.scammerMessage)) {
+        extractionState.callbackNumber = true;
+      }
 
-        // Email
-        if (/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(text)) {
-          extractionState.email = true;
-        }
+      // Email
+      if (/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(text)) {
+        extractionState.email = true;
+      }
 
-        // Links/URLs
-        if (/http|www\.|bit\.ly|tinyurl|\.com|\.in/i.test(text)) {
-          extractionState.verificationLink = true;
-        }
+      // Links/URLs
+      if (/http|www\.|bit\.ly|tinyurl|\.com|\.in/i.test(text)) {
+        extractionState.verificationLink = true;
+      }
 
-        // Apps
-        if (/anydesk|teamviewer|quicksupport|\.apk|download.*app|install/i.test(text)) {
-          extractionState.appName = true;
-        }
+      // Apps
+      if (/anydesk|teamviewer|quicksupport|\.apk|download.*app|install/i.test(text)) {
+        extractionState.appName = true;
+      }
 
-        // UPI
-        if (/[a-z0-9]+@(paytm|ybl|oksbi|okaxis|okicici)/i.test(text)) {
-          extractionState.upiHandle = true;
-        }
+      // UPI
+      if (/[a-z0-9]+@(paytm|ybl|oksbi|okaxis|okicici)/i.test(text)) {
+        extractionState.upiHandle = true;
+      }
 
-        // Transaction details
-        if (/txn|transaction\s*(id|number)|merchant|₹\s*\d+|rs\.?\s*\d+/i.test(text)) {
-          extractionState.transactionId = true;
-          extractionState.merchant = true;
-          extractionState.amount = true;
-        }
+      // Transaction details
+      if (/txn|transaction\s*(id|number)|merchant|₹\s*\d+|rs\.?\s*\d+/i.test(text)) {
+        extractionState.transactionId = true;
+        extractionState.merchant = true;
+        extractionState.amount = true;
+      }
 
-        // Employee ID
-        if (/employee\s+id|emp\s*[-:#]?\s*\d+|id:\s*\d+|staff\s+id/i.test(text)) {
-          extractionState.employeeId = true;
-        }
+      // Employee ID
+      if (/employee\s+id|emp\s*[-:#]?\s*\d+|id:\s*\d+|staff\s+id/i.test(text)) {
+        extractionState.employeeId = true;
+      }
 
-        // Supervisor
-        if (/supervisor|manager|senior|officer/i.test(text)) {
-          extractionState.supervisor = true;
-        }
+      // Supervisor
+      if (/supervisor|manager|senior|officer/i.test(text)) {
+        extractionState.supervisor = true;
+      }
 
-        // IFSC
-        if (/[a-z]{4}0\d{6}|ifsc|branch\s+code/i.test(text)) {
-          extractionState.ifscCode = true;
-          extractionState.branchLocation = true;
-        }
+      // IFSC
+      if (/[a-z]{4}0\d{6}|ifsc|branch\s+code/i.test(text)) {
+        extractionState.ifscCode = true;
+        extractionState.branchLocation = true;
       }
     });
 
