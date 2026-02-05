@@ -411,7 +411,8 @@ NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!
     const otpMentionCount = (allHoneypotQuestions.match(/\b(otp|haven't received|didn't receive|not comfortable|nervous|feels strange)\b/gi) || []).length;
 
     // Scammer asking for OTP?
-    const scammerAsksOTP = /\b(otp|pin|password|cvv|code|send|share|provide)\b/i.test(scammerMessage);
+    // STRICTER: Must match "OTP", "PIN", "Password", "CVV" directly OR "share code".
+    const scammerAsksOTP = /\b(otp|pin|password|vmob|cvv|mpin)\b/i.test(scammerMessage) || /(?:share|provide|tell).{0,10}(?:code|number)/i.test(scammerMessage);
 
     // HINT: Check for potential bank account numbers (9-18 digits) WITH CONTEXT
     // Looks for "account", "acc", "no", "number" within reasonable distance of digits
@@ -447,11 +448,13 @@ ${actualQuestionsAsked.length > 0 ? actualQuestionsAsked.join('\n') : 'None yet'
 
 🎭 EMOTION CONTROL (MANDATORY BEHAVIOR):
 ${turnNumber === 1 ? `1️⃣ INITIAL SHOCK: Respond with FEAR/ALARM. ("Oh god", "This is alarming", "I'm really worried")` : ''}
-${bankAccountHint ? `2️⃣ MONEY REACTION: ESCALATE! ("That much money?!", "This is serious...")` : ''}
-${moneyMentioned && turnNumber > 1 ? `3️⃣ MONEY SHOCK: REACT WITH SURPRISE! ("₹[amount]?! That is a big amount... How did this happen?")` : ''}
+${bankAccountHint ? `2️⃣ ACCOUNT REACTION: You detected a bank account number! React: "Wait, [number]... that is my account number! How did you get this?"` : ''}
+${moneyMentioned && turnNumber > 1 ? `3️⃣ MONEY SHOCK: Scammer mentioned amount. React: "₹[amount]?! That is a big amount... How did this happen?"` : ''}
 ${merchantMentioned && turnNumber > 1 ? `4️⃣ MERCHANT DENIAL: "But I didn't buy anything from [Merchant]! I never go there only."` : ''}
-${turnNumber > 1 && !moneyMentioned && !merchantMentioned && !bankAccountHint ? `5️⃣ STANDARD VERIFICATION: STOP saying "I'm worried/unsure/hesitant". Just ACKNOWLEDGE + ASK. 
-   Example: "Okay sir, [restate detail]. What is [new question]?" (Keep it brief & direct)` : ''}
+${turnNumber > 1 && !moneyMentioned && !merchantMentioned && !bankAccountHint ? `5️⃣ CALM VERIFICATION: STOP saying "I'm worried/scared/unsure". Be PRACTICAL.
+   - Simply acknowledge the detail.
+   - Ask the next question naturally.
+   - Example: "Okay, employee ID [ID]. What is your email?"` : ''}
 ${turnNumber >= 8 ? `6️⃣ FINAL CHECK: "Okay sir, thank you for details. Let me call bank once to confirm."` : ''}
 
 → AFTER reacting, ask ONE new verification question.
@@ -459,7 +462,7 @@ ${turnNumber >= 8 ? `6️⃣ FINAL CHECK: "Okay sir, thank you for details. Let 
 ${scammerAsksOTP && otpMentionCount < 4 ? `⚠️ SCAMMER WANTS OTP/PASSWORD!
 Respond SUBTLY (not direct):
 ${otpMentionCount === 0 ? '→ "Sir, I\'m not getting any OTP message only. What is your [NEW]?"' : ''}
-${otpMentionCount === 1 ? '→ "Actually the SMS is not coming sir. Can you please tell me [NEW]?"' : ''}
+${otpMentionCount === 1 ? '→ "Still no SMS... maybe network issue. Can you please tell me [NEW]?"' : ''}
 ${otpMentionCount === 2 ? '→ "Sir, my bank told me never share OTP. What is [NEW]?"' : ''}
 ${otpMentionCount >= 3 ? '→ "But sir, let me call bank and confirm. What is [NEW]?"' : ''}
 ` : ''
