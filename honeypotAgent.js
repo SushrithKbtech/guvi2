@@ -231,8 +231,8 @@ REMEMBER:
 
       // ONLY check scammer messages for intel they actually provided
       if (msg.sender === 'scammer') {
-        // Case/Reference ID - match "REF123", "REF-2023-9876", "Reference No: 123", etc.
-        if (/(?:ref|reference|case|complaint|ticket)(?:\s*no\.?)?[-:\s#]*[0-9-]+/i.test(msg.text) || /\b\d{6,8}\b/.test(msg.text)) {
+        // Case/Reference ID - ULTRA FLEXIBLE - match anything with ref/case/reference + numbers
+        if (/ref|reference|case|complaint|ticket/i.test(msg.text) && /\d{3,}/i.test(msg.text)) {
           extractionState.caseReference = true;
         }
 
