@@ -312,7 +312,11 @@ OUTPUT (JSON):
 4. Did scammer mention Amount? → Add to amounts
 5. Did scammer mention IFSC? → Add to ifscCodes
 6. Did scammer mention Email? → Add to emailAddresses
-NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!`;
+7. Did scammer mention a BANK ACCOUNT (9-18 digits)? → Add to bankAccounts immediately!
+NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!
+
+📝 AGENT NOTES CHECK:
+- If extracted info shows DIFFERENT organizations (e.g. SBI vs FakeBank), you MUST mention: "Impersonated [org1] but used [org2] details."
 
     // BULLETPROOF MEMORY: Extract ACTUAL questions asked
     const allHoneypotQuestions = conversationHistory
@@ -325,7 +329,8 @@ NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!`;
       if (msg.agentReply) {
         const questions = msg.agentReply.match(/[^.!?]*\?/g) || [];
         questions.forEach(q => {
-          actualQuestionsAsked.push(`Turn ${idx + 1}: "${q.trim()}"`);
+          actualQuestionsAsked.push(`Turn ${ idx + 1
+  }: "${q.trim()}"`);
         });
       }
     });
@@ -408,33 +413,37 @@ NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!`;
     const scammerAsksOTP = /\b(otp|pin|password|cvv|code|send|share|provide)\b/i.test(scammerMessage);
 
     const userPrompt = `CONVERSATION SO FAR:
-${conversationContext}
+${ conversationContext }
 
 SCAMMER'S NEW MESSAGE: "${scammerMessage}"
 
 ⛔ QUESTIONS YOU ALREADY ASKED:
-${actualQuestionsAsked.length > 0 ? actualQuestionsAsked.join('\n') : 'None yet'}
+${ actualQuestionsAsked.length > 0 ? actualQuestionsAsked.join('\n') : 'None yet' }
 
-🚫 TOPICS ALREADY COVERED: ${alreadyAsked.join(', ') || 'None yet'}
+🚫 TOPICS ALREADY COVERED: ${ alreadyAsked.join(', ') || 'None yet' }
 
 ⚠️ DO NOT ASK ABOUT THESE TOPICS AGAIN!
 
-🎭 EMOTION CONTROL (CURRENT TURN: ${turnNumber}):
-${turnNumber <= 2 ? `→ You MAY show concern: "This is alarming sir..." or "I'm worried..."` : `→ BE CALM & PRACTICAL NOW. NO MORE "worried", "nervous", "anxious", "scared"
+🎭 EMOTION CONTROL(CURRENT TURN: ${ turnNumber }):
+${
+  turnNumber <= 2 ? `→ You MAY show concern: "This is alarming sir..." or "I'm worried..."` : `→ BE CALM & PRACTICAL NOW. NO MORE "worried", "nervous", "anxious", "scared"
 → Just ask verification questions directly
 → Example: "Sir, what is your employee ID?" (NOT "I'm worried sir, what is your employee ID?")
 → Sound like you're VERIFYING, not panicking`}
 
-${scammerAsksOTP && otpMentionCount < 4 ? `⚠️ SCAMMER WANTS OTP/PASSWORD!
+${
+  scammerAsksOTP && otpMentionCount < 4 ? `⚠️ SCAMMER WANTS OTP/PASSWORD!
 Respond SUBTLY (not direct):
 ${otpMentionCount === 0 ? '→ "Sir, I\'m not getting any OTP message only. What is your [NEW]?"' : ''}
 ${otpMentionCount === 1 ? '→ "Actually the SMS is not coming sir. Can you please tell me [NEW]?"' : ''}
 ${otpMentionCount === 2 ? '→ "Sir, my bank told me never share OTP. What is [NEW]?"' : ''}
 ${otpMentionCount >= 3 ? '→ "But sir, let me call bank and confirm. What is [NEW]?"' : ''}
-` : ''}
+` : ''
+}
 
-🚨 NATURAL EXTRACTION (GUARANTEED BY END):
-${turnNumber <= 3 ? `
+🚨 NATURAL EXTRACTION(GUARANTEED BY END):
+${
+  turnNumber <= 3 ? `
 **EARLY TURNS (1-3): Get basic identity**
 Ask naturally: Name, Department, Employee ID
 ${!addedTopics.has('name') ? '→ Who are you? What is your name?' : '✅ Got name'}
@@ -462,21 +471,21 @@ ${!addedTopics.has('amount') ? '✓ Amount' : ''}
 `}
 
 ✅ ASK SOMETHING COMPLETELY NEW:
-${!addedTopics.has('upi') ? '✓ UPI ID' : ''}
-${!addedTopics.has('amount') ? '✓ Amount' : ''}
-${!addedTopics.has('caseid') ? '✓ Case ID' : ''}
-${!addedTopics.has('dept') ? '✓ Department' : ''}
-${!addedTopics.has('name') ? '✓ Name' : ''}
-${!addedTopics.has('app') ? '✓ App/software name' : ''}
-${!addedTopics.has('link') ? '✓ Link/website' : ''}
-${!addedTopics.has('fee') ? '✓ Fee/payment amount' : ''}
+${ !addedTopics.has('upi') ? '✓ UPI ID' : '' }
+${ !addedTopics.has('amount') ? '✓ Amount' : '' }
+${ !addedTopics.has('caseid') ? '✓ Case ID' : '' }
+${ !addedTopics.has('dept') ? '✓ Department' : '' }
+${ !addedTopics.has('name') ? '✓ Name' : '' }
+${ !addedTopics.has('app') ? '✓ App/software name' : '' }
+${ !addedTopics.has('link') ? '✓ Link/website' : '' }
+${ !addedTopics.has('fee') ? '✓ Fee/payment amount' : '' }
 
 💬 RESPOND NATURALLY:
 1. React to what scammer JUST said
-2. Show genuine emotion (worry/fear/confusion)
+2. Show genuine emotion(worry / fear / confusion)
 3. Ask ONE NEW thing that relates to their message
 
-Generate JSON:`
+Generate JSON: `
 
     try {
       console.log('⏱️ Calling OpenAI...');
@@ -492,7 +501,7 @@ Generate JSON:`
       });
 
       const llmTime = Date.now() - startTime;
-      console.log(`⏱️ LLM responded in ${llmTime}ms`);
+      console.log(`⏱️ LLM responded in ${ llmTime } ms`);
 
       const rawResponse = completion.choices[0].message.content;
       console.log('🤖 LLM Raw Response:', rawResponse);
@@ -510,7 +519,7 @@ Generate JSON:`
       };
 
       const totalTime = Date.now() - startTime;
-      console.log(`✅ Total response time: ${totalTime}ms`);
+      console.log(`✅ Total response time: ${ totalTime } ms`);
 
       return finalResponse;
 
@@ -521,7 +530,7 @@ Generate JSON:`
         phase: "VERIFICATION",
         scamDetected: true,
         intelSignals: {},
-        agentNotes: `Error occurred: ${error.message}`,
+        agentNotes: `Error occurred: ${ error.message } `,
         shouldTerminate: false,
         terminationReason: ""
       };
