@@ -389,15 +389,30 @@ ${otpMentionCount === 2 ? '→ "Sir, my bank told me never share OTP. What is [N
 ${otpMentionCount >= 3 ? '→ "But sir, let me call bank and confirm. What is [NEW]?"' : ''}
 ` : ''}
 
-✅ ASK SOMETHING COMPLETELY NEW:
-${!addedTopics.has('email') ? '✓ Official email' : ''}
-${!addedTopics.has('ifsc') ? '✓ IFSC code' : ''}
+🚨 CRITICAL EXTRACTION BY TURN ${turnNumber}:
+${turnNumber <= 3 ? `
+**YOU MUST EXTRACT CRITICAL INTEL IN TURNS 1-3!**
+Priority order (ask in ANY order, just GET THEM by Turn 3):
+${!addedTopics.has('callback') ? '🔥 CALLBACK NUMBER (HIGHEST PRIORITY - ask this in Turn 1-2!)' : '✅ Got callback'}
+${!addedTopics.has('upi') && /\b(upi|payment|refund|transfer|collect)\b/i.test(scammerMessage) ? '🔥 UPI ID/HANDLE (scammer mentioned payment!)' : ''}
+${!addedTopics.has('link') && /\b(link|website|url|email|click|download)\b/i.test(scammerMessage) ? '🔥 PHISHING LINK/WEBSITE (scammer mentioned link!)' : ''}
+${!addedTopics.has('empid') && !addedTopics.has('callback') ? '⚠️ If no callback yet, ask: name + callback together' : ''}
+
+After Turn 3, you can ask: employee ID, email, IFSC, branch, supervisor, etc.
+` : `
+Turn ${turnNumber}: You can now ask secondary details:
 ${!addedTopics.has('empid') ? '✓ Employee ID' : ''}
-${!addedTopics.has('callback') ? '✓ Callback number' : ''}
+${!addedTopics.has('email') ? '✓ Email' : ''}
+${!addedTopics.has('dept') ? '✓ Department' : ''}
+${!addedTopics.has('supervisor') ? '✓ Supervisor' : ''}
+${!addedTopics.has('ifsc') ? '✓ IFSC code' : ''}
 ${!addedTopics.has('address') ? '✓ Branch address' : ''}
-${!addedTopics.has('supervisor') ? '✓ Supervisor name' : ''}
 ${!addedTopics.has('txnid') ? '✓ Transaction ID' : ''}
-${!addedTopics.has('merchant') ? '✓ Merchant name' : ''}
+${!addedTopics.has('merchant') ? '✓ Merchant' : ''}
+${!addedTopics.has('amount') ? '✓ Amount' : ''}
+`}
+
+✅ ASK SOMETHING COMPLETELY NEW:
 ${!addedTopics.has('upi') ? '✓ UPI ID' : ''}
 ${!addedTopics.has('amount') ? '✓ Amount' : ''}
 ${!addedTopics.has('caseid') ? '✓ Case ID' : ''}
