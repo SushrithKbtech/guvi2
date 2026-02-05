@@ -332,30 +332,32 @@ REMEMBER:
     if (extractionState.ifscCode) alreadyHave.push('IFSC');
     if (extractionState.branchLocation) alreadyHave.push('Branch');
 
-    const userPrompt = `NEW MESSAGE FROM SCAMMER: "${scammerMessage}"
+    const userPrompt = `CONVERSATION SO FAR:
+${conversationContext}
 
-🚫 DO NOT ASK ABOUT (WE ALREADY HAVE THESE):
-${alreadyHave.length > 0 ? alreadyHave.join(', ') : 'Nothing yet'}
+NEW MESSAGE FROM SCAMMER: "${scammerMessage}"
 
-✅ STILL NEED (ASK FOR ONE OF THESE):
-${missingItems.join(', ')}
+ANALYSIS OF WHAT YOU ALREADY ASKED:
+${alreadyHave.length > 0 ? '✅ ALREADY ASKED/GOT: ' + alreadyHave.join(', ') : '❌ Nothing extracted yet'}
 
-🎯 YOUR MANDATORY TASK:
-Ask for: ${nextTarget}
+🎯 YOUR NEXT QUESTION MUST BE ABOUT: ${nextTarget}
 
-EXAMPLE RESPONSES:
-- If target is "Department name" → "Which department are you calling from?"
-- If target is "Callback phone number" → "Can you provide your official callback number?"
-- If target is "Official email address" → "What's the official email address for this alert?"
-- If target is "Transaction ID" → "What's the transaction ID you're referring to?"
-- If target is "Delay/Disengage" → "I will call the official helpline to verify this."
+STRICT RULES:
+1. READ the conversation above - DO NOT repeat any question you already asked
+2. Ask ONLY about: ${nextTarget}
+3. If scammer gave reference number - DO NOT ask for it again
+4. If scammer gave name - DO NOT ask for it again
 
-🚫 FORBIDDEN:
-- DO NOT ask about: ${alreadyHave.join(', ')}
-- DO NOT say "I can't share OTP" unless they ask for OTP
-- DO NOT repeat previous questions
+EXAMPLE FOR "${nextTarget}":
+${nextTarget === 'Case/Reference ID' ? '"I need to verify this. Can you provide the case reference number?"' : ''}
+${nextTarget === 'Scammer full name' ? '"What is your full name for verification?"' : ''}
+${nextTarget === 'Department name' ? '"Which department are you calling from?"' : ''}
+${nextTarget === 'Callback phone number' ? '"What is your official callback number?"' : ''}
+${nextTarget === 'Official email address' ? '"Can you send this from an official email address?"' : ''}
+${nextTarget === 'Transaction ID' ? '"What is the transaction ID you are referring to?"' : ''}
+${nextTarget === 'Delay/Disengage' ? '"I will call the official helpline to verify this."' : ''}
 
-Generate JSON asking ONLY for: ${nextTarget}`;
+Generate JSON response asking ONLY about: ${nextTarget}`;
 
     // DEBUG: Log extraction state
     console.log('🔍 EXTRACTION STATE:', JSON.stringify(extractionState, null, 2));
