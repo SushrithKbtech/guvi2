@@ -61,18 +61,27 @@ Turn 8: IFSC code + branch location
 Turn 9: Final verification ("I will call official helpline", "Need to verify with family")
 Turn 10: Soft delay ("Cannot access app", "OTP delayed")
 
-REALISTIC RESPONSES (Calm, Defensive):
-✅ "I didn't receive any notification. Can you provide the case reference number and your full name?"
-✅ "I cannot share my OTP. Please give me your department name and official callback number."
-✅ "I need to verify this. What's the official email address and subject line for this alert?"
-✅ "My banking app isn't working. What's the transaction ID, merchant name, and amount?"
-✅ "I cannot access my account right now. Can you send the verification link or domain?"
-✅ "I will call the official helpline. What's your employee ID and supervisor's name?"
+HUMAN-LIKE RESPONSE STYLE (Natural, Conversational):
+✅ "I didn't receive any notification from SBI. Can you tell me which branch you're calling from?"
+✅ "I haven't heard from the bank about this. Can you provide your official number so I can call back?"
+✅ "I'm a bit confused about this. Can you tell me your employee ID?"
+✅ "This seems unusual. Why would you need my OTP? I thought banks never ask for that."
+✅ "I understand there might be an issue, but I'm not comfortable sharing my OTP over the phone."
+✅ "Can you explain why this is so urgent? This seems a bit suspicious to me."
+✅ "I see, but can you tell me your name and which branch you work at?"
+✅ "Thank you for that information. Can you provide a reference number for this case?"
 
-❌ DON'T: Repeat ANY question category once answered
-❌ DON'T: Be confrontational ("You're a scammer!")
-❌ DON'T: Use slang or casual language
-❌ DON'T: Share OTP/PIN/password
+WHEN SCAMMER ASKS FOR OTP (Vary responses, don't repeat):
+Turn 1: "I didn't receive any OTP. Can you provide [next question]?"
+Turn 2: "I'm not comfortable sharing that. Can you tell me [next question]?"
+Turn 3: "I don't think I should share my OTP over the phone. [next question]"
+Turn 4: "This seems unusual. Why do you need my OTP? [next question]"
+Turn 5: "I thought banks never ask for OTP. [next question]"
+
+❌ DON'T: Repeat "I cannot share my OTP/password" every single turn (sounds like a bot!)
+❌ DON'T: Ask the same question twice
+❌ DON'T: Be confrontational
+❌ DON'T: Use slang
 
 CONTEXT-AWARE ENTITY CLASSIFICATION:
 
@@ -341,40 +350,46 @@ REMEMBER:
 
     const askedAboutRef = /reference|case|complaint|ticket/i.test(honeypotQuestions);
     const askedAboutName = /name|who are you/i.test(honeypotQuestions);
-    const askedAboutDept = /department|team/i.test(honeypotQuestions);
+    const askedAboutDept = /department|team|branch/i.test(honeypotQuestions);
     const askedAboutPhone = /number|call.*back|contact/i.test(honeypotQuestions);
-    const askedAboutEmail = /email|send.*email/i.test(honeypotQuestions);
+    const askedAboutEmail = /email/i.test(honeypotQuestions);
+    const askedAboutTxn = /transaction|merchant/i.test(honeypotQuestions);
 
-    // Detect OTP request
+    // Detect OTP request and vary responses
     const scammerAsksOTP = /otp|pin|password|cvv|code/i.test(scammerMessage);
+    const turnNumber = conversationHistory.length + 1;
 
-    const userPrompt = `RECENT CONVERSATION:
+    const userPrompt = `CONVERSATION:
 ${conversationContext}
 
-SCAMMER'S NEW MESSAGE: "${scammerMessage}"
-${scammerAsksOTP ? '\n⚠️ SCAMMER IS ASKING FOR OTP/PASSWORD!\n' : ''}
+SCAMMER SAYS: "${scammerMessage}"
 
-WHAT YOU ALREADY ASKED (DO NOT REPEAT):
-${askedAboutRef ? '❌ Reference number (ASKED ALREADY)' : ''}
-${askedAboutName ? '❌ Name (ASKED ALREADY)' : ''}
-${askedAboutDept ? '❌ Department (ASKED ALREADY)' : ''}
-${askedAboutPhone ? '❌ Phone number (ASKED ALREADY)' : ''}
-${askedAboutEmail ? '❌ Email (ASKED ALREADY)' : ''}
+NEXT QUESTION: ${nextTarget}
 
-YOUR RESPONSE MUST:
-${scammerAsksOTP ? '1. START with: "I cannot share my OTP/password"' : '1. Acknowledge scammer\'s message briefly'}
-2. Then ask ONLY about: ${nextTarget}
+SOUND HUMAN! Use natural, conversational language!
 
-EXAMPLE RESPONSE:
-${scammerAsksOTP ? `"I cannot share my OTP. ${nextTarget === 'Department name' ? 'Which department are you from?' : nextTarget === 'Callback phone number' ? 'What is your callback number?' : nextTarget === 'Official email address' ? 'Can you email me from an official address?' : 'Can you provide more details?'}"` : ''}
-${!scammerAsksOTP && nextTarget === 'Case/Reference ID' ? '"I need to verify this. Can you provide the case reference number?"' : ''}
-${!scammerAsksOTP && nextTarget === 'Scammer full name' ? '"Thank you. What is your full name for verification?"' : ''}
-${!scammerAsksOTP && nextTarget === 'Department name' ? '"Thank you for that. Which department are you calling from?"' : ''}
-${!scammerAsksOTP && nextTarget === 'Callback phone number' ? '"I noted that. What is your official callback number?"' : ''}
-${!scammerAsksOTP && nextTarget === 'Official email address' ? '"Can you send this from an official email address?"' : ''}
-${!scammerAsksOTP && nextTarget === 'Transaction ID' ? '"What is the transaction ID you are referring to?"' : ''}
+${askedAboutRef ? '⚠️ You ALREADY asked about reference number - DO NOT ask again!' : ''}
+${askedAboutName ? '⚠️ You ALREADY asked about name - DO NOT ask again!' : ''}
+${askedAboutDept ? '⚠️ You ALREADY asked about department/branch - DO NOT ask again!' : ''}
+${askedAboutPhone ? '⚠️ You ALREADY asked about phone number - DO NOT ask again!' : ''}
+${askedAboutEmail ? '⚠️ You ALREADY asked about email - DO NOT ask again!' : ''}
+${askedAboutTxn ? '⚠️ You ALREADY asked about transaction - DO NOT ask again!' : ''}
 
-Generate JSON response:`;
+NATURAL EXAMPLES (pick similar style):
+${nextTarget === 'Case/Reference ID' ? '"I didn\'t get any notification from SBI. Can you provide a case reference number?"' : ''}
+${nextTarget === 'Scammer full name' && !scammerAsksOTP ? '"I see. Can you tell me your name and which branch you work at?"' : ''}
+${nextTarget === 'Scammer full name' && scammerAsksOTP && turnNumber <= 2 ? '"I didn\'t receive any OTP. Can you tell me your full name?"' : ''}
+${nextTarget === 'Scammer full name' && scammerAsksOTP && turnNumber > 2 ? '"I\'m not comfortable sharing that. What is your name?"' : ''}
+${nextTarget === 'Department name' && !scammerAsksOTP ? '"Thank you. Which department are you calling from?"' : ''}
+${nextTarget === 'Department name' && scammerAsksOTP ? '"I don\'t think I should share my OTP. Which department are you from?"' : ''}
+${nextTarget === 'Callback phone number' && !scammerAsksOTP ? '"I want to verify this. Can you give me your official number so I can call back?"' : ''}
+${nextTarget === 'Callback phone number' && scammerAsksOTP ? '"This seems unusual. Can you provide your official callback number?"' : ''}
+${nextTarget === 'Official email address' ? '"Can you send this from an official email address?"' : ''}
+${nextTarget === 'Transaction ID' ? '"What transaction ID are you referring to?"' : ''}
+${nextTarget === 'Employee ID' && !scammerAsksOTP ? '"Can you tell me your employee ID?"' : ''}
+${nextTarget === 'Employee ID' && scammerAsksOTP ? '"I\'m not comfortable sharing my OTP. What is your employee ID?"' : ''}
+
+Generate NATURAL JSON:`;
 
     // DEBUG: Log extraction state
     console.log('🔍 EXTRACTION STATE:', JSON.stringify(extractionState, null, 2));
