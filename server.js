@@ -183,7 +183,8 @@ app.post('/api/conversation', authenticateApiKey, async (req, res) => {
                 await axios.post(GUVI_CALLBACK_URL, finalPayload, {
                     timeout: 5000,
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'x-api-key': API_KEY
                     }
                 });
 
