@@ -423,6 +423,9 @@ NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!
       ? `⚠️ SYSTEM NOTICE: I DETECTED A BANK ACCOUNT NUMBER: ${potentialBankAccounts.join(', ')} (based on 'account' keyword). ADD TO 'bankAccounts'! (Ignore if it's a phone number)`
       : '';
 
+    // Check for money mention to trigger emotional spike
+    const moneyMentioned = /\b(rs\.?|inr|rupees|amount|charge|pay)\b/i.test(scammerMessage) || /\d+/.test(scammerMessage);
+
     const userPrompt = `CONVERSATION SO FAR:
 ${conversationContext}
 
@@ -437,11 +440,14 @@ ${actualQuestionsAsked.length > 0 ? actualQuestionsAsked.join('\n') : 'None yet'
 
 ⚠️ DO NOT ASK ABOUT THESE TOPICS AGAIN!
 
-🎭 EMOTION CONTROL(CURRENT TURN: ${turnNumber}):
-${turnNumber <= 2 ? `→ You MAY show concern: "This is alarming sir..." or "I'm worried..."` : `→ BE CALM & PRACTICAL NOW. NO MORE "worried", "nervous", "anxious", "scared"
-→ Just ask verification questions directly
-→ Example: "Sir, what is your employee ID?" (NOT "I'm worried sir, what is your employee ID?")
-→ Sound like you're VERIFYING, not panicking`}
+🎭 EMOTION CONTROL (MANDATORY BEHAVIOR):
+${turnNumber === 1 ? `1️⃣ INITIAL SHOCK: Respond with FEAR/ALARM. ("Oh god", "This is alarming", "I'm really worried")` : ''}
+${bankAccountHint ? `2️⃣ MONEY REACTION: You just saw a bank account/amount! ESCALATE EMOTION! ("That much money?!", "This is serious...")` : ''}
+${moneyMentioned && turnNumber > 1 ? `3️⃣ MONEY SHOCK: Scammer mentioned money/amount. REACT WITH SURPRISE/FEAR! ("₹[amount]?! That is a big amount...", "How did this happen?")` : ''}
+${turnNumber > 1 && !moneyMentioned ? `4️⃣ CAUTIOUS VERIFICATION: Sound confused but slower. Ask specific details to verify identity.` : ''}
+${turnNumber >= 8 ? `5️⃣ FINAL HESITATION: Tone down. Sound like you want to call bank independently. ("I need to confirm first...", "Let me check once...")` : ''}
+
+→ AFTER reacting, ask ONE new verification question.
 
 ${scammerAsksOTP && otpMentionCount < 4 ? `⚠️ SCAMMER WANTS OTP/PASSWORD!
 Respond SUBTLY (not direct):
