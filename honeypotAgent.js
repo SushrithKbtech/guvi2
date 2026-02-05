@@ -312,7 +312,7 @@ OUTPUT (JSON):
 4. Did scammer mention Amount? → Add to amounts
 5. Did scammer mention IFSC? → Add to ifscCodes
 6. Did scammer mention Email? → Add to emailAddresses
-7. Did scammer mention a BANK ACCOUNT (9-18 digits)? → Add to bankAccounts immediately!
+7. ⚠️ DID SCAMMER MENTION ANY NUMBER WITH 9-18 DIGITS? (e.g. 123456789012) → IT IS A BANK ACCOUNT! Add to 'bankAccounts' immediately!
 NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!
 
 📝 AGENT NOTES CHECK:
@@ -412,10 +412,18 @@ NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!
     // Scammer asking for OTP?
     const scammerAsksOTP = /\b(otp|pin|password|cvv|code|send|share|provide)\b/i.test(scammerMessage);
 
+    // HINT: Check for potential bank account numbers (9-18 digits)
+    const potentialBankAccounts = scammerMessage.match(/\b\d{9,18}\b/g) || [];
+    const bankAccountHint = potentialBankAccounts.length > 0
+      ? `⚠️ SYSTEM NOTICE: I DETECTED A POTENTIAL BANK ACCOUNT NUMBER: ${potentialBankAccounts.join(', ')}. EXTRACT THIS INTO 'bankAccounts' IMMEDIATELY!`
+      : '';
+
     const userPrompt = `CONVERSATION SO FAR:
 ${conversationContext}
 
 SCAMMER'S NEW MESSAGE: "${scammerMessage}"
+
+${bankAccountHint}
 
 ⛔ QUESTIONS YOU ALREADY ASKED:
 ${actualQuestionsAsked.length > 0 ? actualQuestionsAsked.join('\n') : 'None yet'}
@@ -478,11 +486,11 @@ ${!addedTopics.has('link') ? '✓ Link/website' : ''}
 ${!addedTopics.has('fee') ? '✓ Fee/payment amount' : ''}
 
 💬 RESPOND NATURALLY:
-1. React to what scammer JUST said
-2. Show genuine emotion(worry / fear / confusion)
-3. Ask ONE NEW thing that relates to their message
+    1. React to what scammer JUST said
+    2. Show genuine emotion(worry / fear / confusion)
+    3. Ask ONE NEW thing that relates to their message
 
-Generate JSON: `
+Generate JSON:`;
 
     try {
       console.log('⏱️ Calling OpenAI...');
