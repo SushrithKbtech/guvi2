@@ -144,36 +144,55 @@ OUTPUT (JSON):
 }`;
 
 
+    // EXPLICIT MEMORY: Track what honeypot ALREADY ASKED
+    const allHoneypotQuestions = conversationHistory
+      .map(msg => msg.agentReply || '')
+      .join(' ')
+      .toLowerCase();
+
+    const alreadyAsked = [];
+    if (/email|e-mail/i.test(allHoneypotQuestions)) alreadyAsked.push('email');
+    if (/ifsc|branch code/i.test(allHoneypotQuestions)) alreadyAsked.push('IFSC code');
+    if (/employee.*id|emp.*id/i.test(allHoneypotQuestions)) alreadyAsked.push('employee ID');
+    if (/callback|call.*back/i.test(allHoneypotQuestions)) alreadyAsked.push('callback number');
+    if (/branch.*address|full address/i.test(allHoneypotQuestions)) alreadyAsked.push('branch address');
+    if (/supervisor|manager/i.test(allHoneypotQuestions)) alreadyAsked.push('supervisor');
+    if (/transaction.*id|txn.*id/i.test(allHoneypotQuestions)) alreadyAsked.push('transaction ID');
+    if (/merchant|company/i.test(allHoneypotQuestions)) alreadyAsked.push('merchant/company');
+    if (/upi|upi.*id/i.test(allHoneypotQuestions)) alreadyAsked.push('UPI ID');
+    if (/amount|how much/i.test(allHoneypotQuestions)) alreadyAsked.push('amount');
+    if (/case|reference|ref.*id/i.test(allHoneypotQuestions)) alreadyAsked.push('case/reference ID');
+    if (/department/i.test(allHoneypotQuestions) && totalMessages > 0) alreadyAsked.push('department');
+    if (/(name|who.*you|who.*are)/i.test(allHoneypotQuestions) && totalMessages > 0) alreadyAsked.push('name');
+
     const userPrompt = `CONVERSATION SO FAR:
 ${conversationContext}
 
 SCAMMER'S NEW MESSAGE: "${scammerMessage}"
 
-Read the conversation above carefully. Check what you ALREADY ASKED.
+🚫 YOU ALREADY ASKED ABOUT: ${alreadyAsked.join(', ') || 'Nothing yet!'}
 
-CRITICAL - DON'T REPEAT:
-- If you asked for email → Ask something NEW (IFSC code, branch address, amount, etc.)
-- If you asked about branch → Ask something NEW (transaction ID, supervisor, UPI handle)
-- If you asked for employee ID → Ask something NEW (email, IFSC, merchant name)
+DO NOT REPEAT! Ask about something COMPLETELY DIFFERENT.
 
-ASK DIRECTLY (don't say "send me"):
-✅ "What's your official email address?"
-✅ "What's the IFSC code of your branch?"
-✅ "Which branch - what's the full address?"
-❌ "Can you send me an email?"
+✅ AVAILABLE TO ASK (choose something NEW):
+${!alreadyAsked.includes('email') ? '✓ Official email address' : ''}
+${!alreadyAsked.includes('IFSC code') ? '✓ IFSC code' : ''}
+${!alreadyAsked.includes('employee ID') ? '✓ Employee ID' : ''}
+${!alreadyAsked.includes('callback number') ? '✓ Callback number' : ''}
+${!alreadyAsked.includes('branch address') ? '✓ Branch address' : ''}
+${!alreadyAsked.includes('supervisor') ? '✓ Supervisor name' : ''}
+${!alreadyAsked.includes('transaction ID') ? '✓ Transaction ID' : ''}
+${!alreadyAsked.includes('merchant/company') ? '✓ Merchant/company name' : ''}
+${!alreadyAsked.includes('UPI ID') ? '✓ UPI ID' : ''}
+${!alreadyAsked.includes('amount') ? '✓ Transaction amount' : ''}
+${!alreadyAsked.includes('case/reference ID') ? '✓ Case/reference ID' : ''}
+${!alreadyAsked.includes('department') ? '✓ Department name' : ''}
+${!alreadyAsked.includes('name') ? '✓ Person name' : ''}
 
-GATHER MAXIMUM INFO:
-Each turn, ask about something NEW you haven't asked yet:
-- Name, department, branch name, branch address, IFSC code
-- Callback number, email, employee ID, supervisor name
-- Case ID, transaction ID, merchant, amount, UPI handle
-- Account numbers they mention, links/apps they want you to use
-
-RESPOND NATURALLY:
-- Turn 1: Shocked ("What? I didn't get any notification!")
-- Turn 2+: Cautious but extracting info
+BE NATURAL & EXTRACT NEW INFO:
+- Turn 1: Shocked + ask something
+- Turn 2+: Ask about NEW topics each time
 - NEVER share OTP/PIN/password
-- Acknowledge what scammer said, then ask NEW question
 
 Generate your JSON response:`;
 
