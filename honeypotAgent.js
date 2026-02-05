@@ -424,8 +424,10 @@ NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!
       : '';
 
     // Check for REAL money mention (symbols, currency words, or large numbers with separators)
-    // Avoids triggering on "2 hours", "step 1", "case 123"
     const moneyMentioned = /(?:rs\.?|inr|rupees|₹|\$|usd|bucks)\s*[\d,k]+|(?:amount|fee|charge|balance).{0,10}[\d,k]+/i.test(scammerMessage);
+
+    // Check for merchant mention
+    const merchantMentioned = /(?:merchant|store|shop|amazon|flipkart|myntra|paytm|ebay|google pay)/i.test(scammerMessage);
 
     const userPrompt = `CONVERSATION SO FAR:
 ${conversationContext}
@@ -443,10 +445,12 @@ ${actualQuestionsAsked.length > 0 ? actualQuestionsAsked.join('\n') : 'None yet'
 
 🎭 EMOTION CONTROL (MANDATORY BEHAVIOR):
 ${turnNumber === 1 ? `1️⃣ INITIAL SHOCK: Respond with FEAR/ALARM. ("Oh god", "This is alarming", "I'm really worried")` : ''}
-${bankAccountHint ? `2️⃣ MONEY REACTION: You just saw a bank account/amount! ESCALATE EMOTION! ("That much money?!", "This is serious...")` : ''}
-${moneyMentioned && turnNumber > 1 ? `3️⃣ MONEY SHOCK: Scammer mentioned money/amount. REACT WITH SURPRISE/FEAR! ("₹[amount]?! That is a big amount...", "How did this happen?")` : ''}
-${turnNumber > 1 && !moneyMentioned ? `4️⃣ CALM VERIFICATION: BE PRACTICAL. STOP saying "I'm worried", "I'm confused", "Oh god". Just ask the question politely. Example: "Sir, what is your [question]?"` : ''}
-${turnNumber >= 8 ? `5️⃣ FINAL HESITATION: Tone down. Sound like you want to call bank independently. ("I need to confirm first...", "Let me check once...")` : ''}
+${bankAccountHint ? `2️⃣ MONEY REACTION: ESCALATE! ("That much money?!", "This is serious...")` : ''}
+${moneyMentioned && turnNumber > 1 ? `3️⃣ MONEY SHOCK: REACT WITH SURPRISE! ("₹[amount]?! That is a big amount... How did this happen?")` : ''}
+${merchantMentioned && turnNumber > 1 ? `4️⃣ MERCHANT DENIAL: "But I didn't buy anything from [Merchant]! I never go there only."` : ''}
+${turnNumber > 1 && !moneyMentioned && !merchantMentioned && !bankAccountHint ? `5️⃣ STANDARD VERIFICATION: STOP saying "I'm worried/unsure/hesitant". Just ACKNOWLEDGE + ASK. 
+   Example: "Okay sir, [restate detail]. What is [new question]?" (Keep it brief & direct)` : ''}
+${turnNumber >= 8 ? `6️⃣ FINAL CHECK: "Okay sir, thank you for details. Let me call bank once to confirm."` : ''}
 
 → AFTER reacting, ask ONE new verification question.
 
