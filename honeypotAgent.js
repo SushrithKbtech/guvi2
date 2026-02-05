@@ -225,18 +225,99 @@ Later Scammer: "My supervisor is Mr. Kumar"
 
 DON'T confuse them!
 
-📝 COMPREHENSIVE AGENT NOTES:
-Include ALL of:
-1. **Scam type**: Bank fraud / KYC suspension / Lottery / IT refund / Remote access / APK download
-2. **Scammer identity**: Name, organization, department, employee ID
-3. **What they wanted**: OTP, bank details, install app, pay fee, share documents
-4. **Urgency tactics**: "2 hours", "immediately", "account will be locked"
-5. **ALL extracted intel**: All numbers, IDs, emails, amounts, app names
-6. **Red flags**: Fake domains, wrong procedures, suspicious apps
-7. **Scam indicators**: Specific scam techniques used
+📝 SUPER DETAILED AGENT NOTES (CRITICAL - GUVI JUDGES ON THIS):
 
-Example:
-"Bank fraud scam. Scammer claimed to be Rajesh (EMP123) from SBI Fraud Prevention. Asked for OTP to prevent ₹10,000 unauthorized transaction to XYZ Merchant. Used urgency ('account blocked in 2 hours'). Extracted: callback +91-9876543210, email rajesh@fakebank.com, supervisor  Mr. Kumar, transaction ID TXN123, UPI scammer@upi. Red flags: fake email domain, asked for OTP (against bank policy), couldn't provide IFSC code. Detected OTP phishing attempt."
+Your agentNotes MUST be a COMPREHENSIVE INTELLIGENCE REPORT with ALL details:
+
+**MANDATORY STRUCTURE:**
+
+"**SCAM TYPE:** [Bank fraud / KYC / Lottery / IT refund / Remote access / APK download]
+
+**SCAMMER IDENTITY:**
+- Claimed name: [name]
+- Claimed organization: [bank/company]
+- Claimed department: [Fraud Prevention / Security / etc.]
+- Employee ID: [if provided]
+- Supervisor: [if mentioned]
+
+**WHAT THEY WANTED:**
+- Requested: [OTP / PIN / account number / install app / pay fee / click link]
+- Urgency used: [\"2 hours\", \"immediately\", \"account will be blocked\"]
+- Threats: [account blocked / money lost / legal action]
+
+**EXTRACTED INTELLIGENCE:**
+- Phone/Callback: [+91-XXXXXXXXXX]
+- Email: [if provided]
+- UPI ID: [if mentioned]
+- Phishing links: [if any]
+- Bank accounts: [if provided]
+- IFSC code: [if provided]
+- Branch: [if mentioned]
+- Transaction ID: [if provided]
+- Merchant: [if mentioned]
+- Amount: [if mentioned]
+- Apps mentioned: [AnyDesk / TeamViewer / .apk files]
+
+**RED FLAGS DETECTED:**
+- [Fake email domain like scammer.fraud@fakebank]
+- [Asked for OTP/PIN (against bank policy)]
+- [Couldn't provide official callback number]
+- [Wrong IFSC code format]
+- [Suspicious app installation request]
+- [Payment to personal UPI/account]
+- [Extreme urgency tactics]
+
+**SCAM INDICATORS:**
+- [OTP phishing attempt]
+- [UPI PIN theft attempt]
+- [Remote access trojan (AnyDesk/TeamViewer)]
+- [Phishing link clicked]
+- [Processing fee scam]
+
+**CONVERSATION SUMMARY:**
+[2-3 sentence summary of how scam unfolded]"
+
+**EXAMPLE GOOD AGENT NOTES:**
+
+"**SCAM TYPE:** Bank account fraud with OTP phishing
+
+**SCAMMER IDENTITY:**
+- Claimed name: Rajesh Kumar
+- Claimed organization: SBI Bank
+- Claimed department: Fraud Prevention Department
+- Employee ID: EMP123
+- Supervisor: Mr. Anil Singh
+
+**WHAT THEY WANTED:**
+- Requested: OTP and account number to \"secure account\"
+- Urgency used: \"Account will be blocked in 2 hours\"
+- Threats: Permanent account closure, ₹10,000 unauthorized transaction
+
+**EXTRACTED INTELLIGENCE:**
+- Phone/Callback: +91-9876543210
+- Email: rajesh.fraud@fakebank.com
+- UPI ID: scammer@paytm
+- IFSC code: FAKE0001234
+- Branch: 12/3 MG Road, Mumbai
+- Transaction ID: TXN987654321
+- Merchant: XYZ Electronics
+- Amount: ₹10,000
+
+**RED FLAGS DETECTED:**
+- Fake email domain (fakebank.com instead of sbi.co.in)
+- Asked for OTP repeatedly (against RBI/bank policy)
+- Provided suspicious IFSC code (FAKE prefix)
+- Couldn't explain why OTP needed for \"verification\"
+- UPI ID uses personal handle, not bank account
+
+**SCAM INDICATORS:**
+- Classic OTP phishing attempt
+- Trying to gain account access through OTP
+- Fake bank official impersonation
+- Urgency tactics to prevent victim from verifying
+
+**CONVERSATION SUMMARY:**
+Scammer impersonated SBI Fraud Prevention officer claiming unauthorized ₹10,000 transaction. Used extreme urgency (2-hour deadline) and repeatedly demanded OTP. Provided fake credentials including suspicious email domain and IFSC code. Clear OTP phishing attempt to gain account access."
 
 OUTPUT (JSON):
 {
@@ -389,24 +470,29 @@ ${otpMentionCount === 2 ? '→ "Sir, my bank told me never share OTP. What is [N
 ${otpMentionCount >= 3 ? '→ "But sir, let me call bank and confirm. What is [NEW]?"' : ''}
 ` : ''}
 
-🚨 CRITICAL EXTRACTION BY TURN ${turnNumber}:
+🚨 NATURAL EXTRACTION (GUARANTEED BY END):
 ${turnNumber <= 3 ? `
-**YOU MUST EXTRACT CRITICAL INTEL IN TURNS 1-3!**
-Priority order (ask in ANY order, just GET THEM by Turn 3):
-${!addedTopics.has('callback') ? '🔥 CALLBACK NUMBER (HIGHEST PRIORITY - ask this in Turn 1-2!)' : '✅ Got callback'}
-${!addedTopics.has('upi') && /\b(upi|payment|refund|transfer|collect)\b/i.test(scammerMessage) ? '🔥 UPI ID/HANDLE (scammer mentioned payment!)' : ''}
-${!addedTopics.has('link') && /\b(link|website|url|email|click|download)\b/i.test(scammerMessage) ? '🔥 PHISHING LINK/WEBSITE (scammer mentioned link!)' : ''}
-${!addedTopics.has('empid') && !addedTopics.has('callback') ? '⚠️ If no callback yet, ask: name + callback together' : ''}
-
-After Turn 3, you can ask: employee ID, email, IFSC, branch, supervisor, etc.
+**EARLY TURNS (1-3): Get basic identity**
+Ask naturally: Name, Department, Employee ID
+${!addedTopics.has('name') ? '→ Who are you? What is your name?' : '✅ Got name'}
+${!addedTopics.has('dept') ? '→ Which department?' : '✅ Got department'}
+${!addedTopics.has('empid') ? '→ Employee ID?' : '✅ Got  employee ID'}
+` : turnNumber <= 7 ? `
+**MID TURNS (4-7): Get CRITICAL intel**
+${!addedTopics.has('callback') ? '🔥 MUST ASK: Callback number/phone (CRITICAL for GUVI!)' : '✅ Got callback'}
+${!addedTopics.has('email') ? '→ Official email?' : '✅ Got email'}
+${!addedTopics.has('upi') && /\b(upi|payment|refund|transfer|collect)\b/i.test(scammerMessage) ? '🔥 MUST ASK: UPI ID (scammer mentioned payment!)' : ''}
+${!addedTopics.has('link') && /\b(link|website|url|click|download)\b/i.test(scammerMessage) ? '🔥 MUST ASK: Website/link (scammer mentioned link!)' : ''}
 ` : `
-Turn ${turnNumber}: You can now ask secondary details:
-${!addedTopics.has('empid') ? '✓ Employee ID' : ''}
-${!addedTopics.has('email') ? '✓ Email' : ''}
-${!addedTopics.has('dept') ? '✓ Department' : ''}
-${!addedTopics.has('supervisor') ? '✓ Supervisor' : ''}
+**LATE TURNS (8-10): Fill gaps & ensure critical intel**
+${!addedTopics.has('callback') ? '⚠️⚠️⚠️ URGENT: You MUST ask callback number before conversation ends!' : '✅ Got callback'}
+${!addedTopics.has('upi') && /\b(upi|payment|refund)\b/i.test(conversationContext) ? '⚠️ Ask UPI ID before conversation ends!' : ''}
+${!addedTopics.has('link') && /\b(link|website|url)\b/i.test(conversationContext) ? '⚠️ Ask for link/website before conversation ends!' : ''}
+
+Secondary details you can ask:
 ${!addedTopics.has('ifsc') ? '✓ IFSC code' : ''}
 ${!addedTopics.has('address') ? '✓ Branch address' : ''}
+${!addedTopics.has('supervisor') ? '✓ Supervisor' : ''}
 ${!addedTopics.has('txnid') ? '✓ Transaction ID' : ''}
 ${!addedTopics.has('merchant') ? '✓ Merchant' : ''}
 ${!addedTopics.has('amount') ? '✓ Amount' : ''}
