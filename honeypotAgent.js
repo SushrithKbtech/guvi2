@@ -205,59 +205,108 @@ REMEMBER:
 - Stay calm and defensive, never confrontational`;
 
 
-    // Extract what questions were already asked from conversation history
-    const askedQuestions = new Set();
+    // Build persistent extraction state - what we've already got vs what's still missing
+    const extractionState = {
+      caseReference: false,
+      scammerName: false,
+      department: false,
+      callbackNumber: false,
+      email: false,
+      transactionId: false,
+      merchant: false,
+      amount: false,
+      verificationLink: false,
+      appName: false,
+      upiHandle: false,
+      employeeId: false,
+      supervisor: false,
+      ifscCode: false,
+      branchLocation: false
+    };
+
+    // Scan ALL previous messages (both scammer and honeypot) to see what intel we've extracted
     conversationHistory.forEach(msg => {
+      const text = msg.text.toLowerCase();
+
+      // Check scammer messages for intel they provided
+      if (msg.sender === 'scammer') {
+        if (/ref[-:\s]?\d+|case[-:\s]?\d+|complaint[-:\s]?\d+|ticket[-:\s]?\d+/i.test(text)) extractionState.caseReference = true;
+        if (/employee\s+id|emp\s*\d+|id:\s*\d+/i.test(text)) extractionState.employeeId = true;
+        if (/\d{10}|\+91[-\s]?\d{10}/.test(text)) extractionState.callbackNumber = true;
+        if (/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(text)) extractionState.email = true;
+        if (/http|www\.|bit\.ly|tinyurl/i.test(text)) extractionState.verificationLink = true;
+        if (/anydesk|teamviewer|quicksupport|\.apk/i.test(text)) extractionState.appName = true;
+        if (/[a-z0-9]+@(paytm|ybl|oksbi|okaxis|okicici)/i.test(text)) extractionState.upiHandle = true;
+        if (/txn|transaction|merchant|₹\s*\d+|rs\.?\s*\d+/i.test(text)) {
+          extractionState.transactionId = true;
+          extractionState.merchant = true;
+          extractionState.amount = true;
+        }
+        if (/[a-z]{4}0\d{6}/i.test(text)) extractionState.ifscCode = true;
+      }
+
+      // Check honeypot messages to see what we ASKED for
       if (msg.sender === 'honeypot') {
-        const text = msg.text.toLowerCase();
-        if (text.includes('case reference') || text.includes('complaint') || text.includes('reference number')) askedQuestions.add('case_reference');
-        if (text.includes('your name') || text.includes('full name')) askedQuestions.add('name');
-        if (text.includes('department')) askedQuestions.add('department');
-        if (text.includes('callback') || text.includes('phone number') || text.includes('contact number')) askedQuestions.add('callback_number');
-        if (text.includes('email')) askedQuestions.add('email');
-        if (text.includes('transaction id') || text.includes('transaction')) askedQuestions.add('transaction_id');
-        if (text.includes('merchant')) askedQuestions.add('merchant');
-        if (text.includes('amount')) askedQuestions.add('amount');
-        if (text.includes('link') || text.includes('url') || text.includes('domain')) askedQuestions.add('link');
-        if (text.includes('app') || text.includes('software') || text.includes('download')) askedQuestions.add('app');
-        if (text.includes('upi')) askedQuestions.add('upi');
-        if (text.includes('employee id') || text.includes('id')) askedQuestions.add('employee_id');
-        if (text.includes('supervisor') || text.includes('manager')) askedQuestions.add('supervisor');
-        if (text.includes('ifsc') || text.includes('branch')) askedQuestions.add('ifsc');
+        if (text.includes('case') || text.includes('reference') || text.includes('complaint')) extractionState.caseReference = true;
+        if (text.includes('your name') || text.includes('full name')) extractionState.scammerName = true;
+        if (text.includes('department')) extractionState.department = true;
+        if (text.includes('callback') || text.includes('phone') || text.includes('contact number')) extractionState.callbackNumber = true;
+        if (text.includes('email')) extractionState.email = true;
+        if (text.includes('transaction')) extractionState.transactionId = true;
+        if (text.includes('merchant')) extractionState.merchant = true;
+        if (text.includes('amount')) extractionState.amount = true;
+        if (text.includes('link') || text.includes('url') || text.includes('domain')) extractionState.verificationLink = true;
+        if (text.includes('upi')) extractionState.upiHandle = true;
+        if (text.includes('employee id')) extractionState.employeeId = true;
+        if (text.includes('supervisor') || text.includes('manager')) extractionState.supervisor = true;
+        if (text.includes('ifsc') || text.includes('branch')) {
+          extractionState.ifscCode = true;
+          extractionState.branchLocation = true;
+        }
       }
     });
 
-    const questionsAsked = Array.from(askedQuestions).join(', ') || 'none';
+    // Build list of what's MISSING (not yet asked or extracted)
+    const missingItems = [];
+    if (!extractionState.caseReference) missingItems.push('Case/Reference ID');
+    if (!extractionState.scammerName) missingItems.push('Scammer full name');
+    if (!extractionState.department) missingItems.push('Department name');
+    if (!extractionState.callbackNumber) missingItems.push('Callback phone number');
+    if (!extractionState.email) missingItems.push('Official email address');
+    if (!extractionState.transactionId) missingItems.push('Transaction ID');
+    if (!extractionState.merchant) missingItems.push('Merchant name');
+    if (!extractionState.amount) missingItems.push('Transaction amount');
+    if (!extractionState.verificationLink) missingItems.push('Verification link/URL');
+    if (!extractionState.upiHandle) missingItems.push('UPI handle');
+    if (!extractionState.employeeId) missingItems.push('Employee ID');
+    if (!extractionState.supervisor) missingItems.push('Supervisor name');
+    if (!extractionState.ifscCode) missingItems.push('IFSC code');
+    if (!extractionState.branchLocation) missingItems.push('Branch location');
+
+    const extractedCount = 15 - missingItems.length;
+    const nextTarget = missingItems[0] || 'Delay/Disengage';
 
     const userPrompt = `History:
 ${conversationContext}
 
-NEW: "${scammerMessage}"
-Stress: ${stressScore}/10
-Intent: ${nextIntent}
+NEW MESSAGE: "${scammerMessage}"
 
-CRITICAL - QUESTIONS ALREADY ASKED: ${questionsAsked}
+SESSION STATE (Turn ${totalMessages}/10):
+✅ ALREADY EXTRACTED/ASKED: ${extractedCount}/15 items
+❌ STILL MISSING: ${missingItems.join(', ')}
 
-DO NOT ASK ABOUT: ${questionsAsked}
+YOUR NEXT ACTION:
+Pick EXACTLY ONE item from the MISSING list and ask for it.
+NEXT TARGET: ${nextTarget}
 
-INSTEAD, ASK ABOUT SOMETHING NEW FROM THIS LIST (that you haven't asked yet):
-- Case reference number (if not asked)
-- Scammer's full name (if not asked)
-- Department name (if not asked)
-- Callback phone number (if not asked)
-- Official email address (if not asked)
-- Transaction ID (if not asked)
-- Merchant name (if not asked)
-- Amount (if not asked)
-- Verification link/domain (if not asked)
-- App name to download (if not asked)
-- UPI handle (if not asked)
-- Employee ID (if not asked)
-- Supervisor name (if not asked)
-- IFSC code (if not asked)
-- Branch location (if not asked)
+CRITICAL RULES:
+1. NEVER ask about items in "ALREADY EXTRACTED/ASKED"
+2. ONLY ask about ONE item from "STILL MISSING"
+3. If scammer mentions app/link, ask "What exact steps should I follow?"
+4. If all items extracted, use soft delay: "I will call official helpline"
+5. NEVER say "I can't share OTP" unless they explicitly ask for OTP
 
-Generate JSON response.`;
+Generate JSON response asking for: ${nextTarget}`;
 
     try {
       console.log('⏱️ Calling OpenAI...');
