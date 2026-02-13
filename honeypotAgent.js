@@ -13,6 +13,120 @@ class HoneypotAgent {
     console.log('���� FINAL Enhanced Honeypot Agent initialized');
   }
 
+  normalizeNextIntent(nextIntent) {
+    const validIntents = new Set([
+      'clarify_procedure',
+      'pretend_technical_issue',
+      'request_details',
+      'maintain_conversation'
+    ]);
+
+    if (!nextIntent || typeof nextIntent !== 'string') {
+      return 'maintain_conversation';
+    }
+
+    return validIntents.has(nextIntent) ? nextIntent : 'maintain_conversation';
+  }
+
+  normalizeStressScore(stressScore) {
+    const parsed = Number(stressScore);
+    if (!Number.isFinite(parsed)) {
+      return 5;
+    }
+
+    const rounded = Math.round(parsed);
+    if (rounded < 1) return 1;
+    if (rounded > 10) return 10;
+    return rounded;
+  }
+
+  buildIntentStressControl(intent, stressScore, turnNumber) {
+    const intentInstructions = {
+      clarify_procedure: [
+        'Primary objective: ask for procedure clarity and verification path.',
+        'Prioritize process questions over aggressive detail extraction for this turn.',
+        'Do not use technical delay unless scammer pushes for OTP/PIN immediately.'
+      ],
+      pretend_technical_issue: [
+        'Primary objective: introduce believable technical friction.',
+        'Mention one technical blocker while still asking one new verification question.',
+        'Keep scammer engaged; do not abruptly disengage in this turn.'
+      ],
+      request_details: [
+        'Primary objective: collect scammer identity and contact details.',
+        'Prioritize callback number, employee ID, official email, and case/reference ID.',
+        'Ask one high-value detail that is natural for the current message.'
+      ],
+      maintain_conversation: [
+        'Primary objective: keep conversation natural and believable.',
+        'Maintain flow and extract one new detail without topic jump.',
+        'Use a neutral verification posture unless urgency is explicit.'
+      ]
+    };
+
+    let stressGuidance;
+    if (stressScore <= 3) {
+      stressGuidance = 'Stress level low (1-3): sound calmer, minimal panic language, practical verification tone.';
+    } else if (stressScore <= 7) {
+      stressGuidance = 'Stress level medium (4-7): sound worried but controlled; continue extracting details.';
+    } else {
+      stressGuidance = 'Stress level high (8-10): sound visibly stressed, but still coherent and safe; avoid over-dramatic lines.';
+    }
+
+    const phaseHint = this.deriveExpectedPhase(intent, stressScore, turnNumber);
+    const intentList = (intentInstructions[intent] || intentInstructions.maintain_conversation)
+      .map((line, idx) => `${idx + 1}. ${line}`)
+      .join('\n');
+
+    return `RUNTIME CONTROL (STRICT):
+Intent: ${intent}
+StressScore: ${stressScore}
+Expected phase hint: ${phaseHint}
+${stressGuidance}
+Intent rules:
+${intentList}`;
+  }
+
+  deriveExpectedPhase(intent, stressScore, turnNumber) {
+    if (intent === 'pretend_technical_issue') {
+      return 'DELAY';
+    }
+    if (stressScore >= 9 && turnNumber >= 8) {
+      return 'DISENGAGE';
+    }
+    if (stressScore >= 8 && turnNumber <= 2) {
+      return 'SHOCK';
+    }
+    return 'VERIFICATION';
+  }
+
+  resolvePhase(modelPhase, expectedPhase, intent, stressScore, turnNumber) {
+    const validPhases = new Set(['SHOCK', 'VERIFICATION', 'DELAY', 'DISENGAGE']);
+    const normalizedModelPhase = typeof modelPhase === 'string' ? modelPhase.trim().toUpperCase() : '';
+
+    if (!validPhases.has(normalizedModelPhase)) {
+      return expectedPhase;
+    }
+
+    if (intent === 'pretend_technical_issue' && normalizedModelPhase !== 'DELAY') {
+      return 'DELAY';
+    }
+    if (stressScore >= 9 && turnNumber >= 8 && normalizedModelPhase !== 'DISENGAGE') {
+      return 'DISENGAGE';
+    }
+    if (stressScore >= 8 && turnNumber <= 2 && normalizedModelPhase === 'VERIFICATION') {
+      return 'SHOCK';
+    }
+
+    return normalizedModelPhase;
+  }
+
+  getTemperatureForStress(stressScore) {
+    if (stressScore <= 3) return 0.55;
+    if (stressScore >= 8) return 0.8;
+    return 0.7;
+  }
+
   async generateResponse(scammerMessage, conversationHistory, nextIntent, stressScore) {
     const startTime = Date.now();
     console.log('⏱️ Agent.generateResponse started');
@@ -24,6 +138,9 @@ class HoneypotAgent {
 
     const totalMessages = conversationHistory.length;
     const turnNumber = totalMessages + 1;
+    const normalizedNextIntent = this.normalizeNextIntent(nextIntent);
+    const normalizedStressScore = this.normalizeStressScore(stressScore);
+    const expectedPhase = this.deriveExpectedPhase(normalizedNextIntent, normalizedStressScore, turnNumber);
 
     const systemPrompt = `You are an AI playing a confused, worried Indian citizen receiving a scam message.
 
@@ -554,16 +671,29 @@ ${!addedTopics.has('consumer') ? '✓ Consumer No (if electricity scam)' : ''}
 
 Generate JSON:`;
 
+    const intentStressControlPrompt = this.buildIntentStressControl(
+      normalizedNextIntent,
+      normalizedStressScore,
+      turnNumber
+    );
+
     try {
       console.log('⏱️ Calling OpenAI...');
+      console.log('🧭 Control inputs:', {
+        nextIntent: normalizedNextIntent,
+        stressScore: normalizedStressScore,
+        expectedPhase
+      });
 
       const completion = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
+          { role: 'system', content: intentStressControlPrompt },
+          { role: 'user', content: userPrompt },
+          { role: 'user', content: `Apply runtime control strictly for this turn. Intent=${normalizedNextIntent}, StressScore=${normalizedStressScore}, ExpectedPhase=${expectedPhase}.` }
         ],
-        temperature: 0.7,
+        temperature: this.getTemperatureForStress(normalizedStressScore),
         max_tokens: 800
       });
 
@@ -577,7 +707,13 @@ Generate JSON:`;
 
       const finalResponse = {
         reply: agentResponse.reply || "I'm confused about this. Can you provide more details?",
-        phase: agentResponse.phase || "VERIFICATION",
+        phase: this.resolvePhase(
+          agentResponse.phase,
+          expectedPhase,
+          normalizedNextIntent,
+          normalizedStressScore,
+          turnNumber
+        ),
         scamDetected: agentResponse.scamDetected || false,
         intelSignals: agentResponse.intelSignals || {},
         agentNotes: agentResponse.agentNotes || "",
@@ -594,7 +730,7 @@ Generate JSON:`;
       console.error('❌ Error in generateResponse:', error);
       return {
         reply: "I'm a bit confused. Can you provide more information?",
-        phase: "VERIFICATION",
+        phase: expectedPhase,
         scamDetected: true,
         intelSignals: {},
         agentNotes: `Error occurred: ${error.message} `,
