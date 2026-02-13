@@ -13,27 +13,34 @@ const HoneypotAgent = require('./honeypotAgent');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || 'honeypot-guvi-2026-secure-key';
-const GUVI_CALLBACK_URL = process.env.GUVI_CALLBACK_URL || 'https://hackathon.guvi.in/api/updateHoneyPotFinalResult ';
+
+// Default fallback callback (used only if metadata.callbackUrl is not provided)
+const GUVI_CALLBACK_URL = process.env.GUVI_CALLBACK_URL || 'https://guvi-honeypot-tester.onrender.com/callback';
 const CALLBACK_MAX_RETRIES = 3;
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-const sendFinalResultToGuvi = async (payload) => {
+const sendFinalResultToCallback = async (callbackUrl, payload) => {
+    if (!callbackUrl) {
+        console.warn('⚠️ No callback URL provided; skipping callback.');
+        return false;
+    }
+
     for (let attempt = 1; attempt <= CALLBACK_MAX_RETRIES; attempt++) {
         try {
-            await axios.post(GUVI_CALLBACK_URL, payload, {
+            await axios.post(callbackUrl, payload, {
                 timeout: 5000,
                 headers: {
                     'Content-Type': 'application/json',
                     'x-api-key': API_KEY
                 }
             });
-            console.log(`✅ Successfully sent final result to GUVI (attempt ${attempt})`);
+            console.log(`✅ Successfully sent final result to callback (attempt ${attempt})`);
             return true;
         } catch (error) {
             const status = error.response?.status;
             const body = error.response?.data;
-            console.error(`❌ GUVI callback failed (attempt ${attempt}/${CALLBACK_MAX_RETRIES})`, {
+            console.error(`❌ Callback failed (attempt ${attempt}/${CALLBACK_MAX_RETRIES})`, {
                 status: status || 'no-status',
                 body: body || 'no-body',
                 message: error.message
@@ -110,22 +117,17 @@ app.post('/api/conversation', authenticateApiKey, async (req, res) => {
         console.log('📥 Incoming GUVI request:', JSON.stringify(req.body, null, 2));
 
         const {
-            sessionId = `generated-${Date.now()}`, // Auto-generate if missing
-            message = { text: "Hello", sender: "scammer" }, // Default if missing
+            sessionId = `generated-${Date.now()}`,
+            message = { text: "Hello", sender: "scammer" },
             conversationHistory = [],
             metadata = {}
         } = req.body || {};
 
         console.log('✅ Step 1: Request parsed. SessionId:', sessionId);
 
-        // REMOVED STRICT VALIDATION
-        // We now accept whatever GUVI sends to avoid 400 errors
-
-        // Log if fields were missing
         if (!req.body.sessionId) console.log('⚠️ Warning: sessionId was missing, auto-generated.');
         if (!req.body.message) console.log('⚠️ Warning: message was missing, using default.');
 
-        // Get or create session data
         let sessionData = sessions.get(sessionId) || {
             sessionId,
             messages: [],
@@ -141,7 +143,6 @@ app.post('/api/conversation', authenticateApiKey, async (req, res) => {
             }
         };
 
-        // Build conversation history for agent
         const agentHistory = conversationHistory.map(msg => ({
             timestamp: msg.timestamp,
             scammerMessage: msg.sender === 'scammer' ? msg.text : '',
@@ -149,12 +150,10 @@ app.post('/api/conversation', authenticateApiKey, async (req, res) => {
             stressScore: 5
         }));
 
-        // Calculate stress score based on conversation length and urgency
         const computedStressScore = Math.min(10, 5 + Math.floor(agentHistory.length / 2));
         const incomingStressScore = req.body?.stressScore ?? metadata?.stressScore;
         const stressScore = incomingStressScore ?? computedStressScore;
 
-        // Determine next intent based on conversation
         const computedNextIntent = agentHistory.length === 0 ? 'clarify_procedure' :
             agentHistory.length < 3 ? 'request_details' :
                 agentHistory.length < 6 ? 'pretend_technical_issue' :
@@ -162,7 +161,6 @@ app.post('/api/conversation', authenticateApiKey, async (req, res) => {
         const incomingNextIntent = req.body?.nextIntent ?? metadata?.nextIntent;
         const nextIntent = incomingNextIntent || computedNextIntent;
 
-        // Generate agent response
         console.log('🤖 Calling agent.generateResponse with:', { text: message.text, historyLength: agentHistory.length, nextIntent, stressScore });
         const response = await agent.generateResponse(
             message.text,
@@ -172,7 +170,6 @@ app.post('/api/conversation', authenticateApiKey, async (req, res) => {
         );
         console.log('✅ Agent response received:', response.reply);
 
-        // Update session intelligence
         if (response.intelSignals) {
             Object.keys(response.intelSignals).forEach(key => {
                 if (Array.isArray(response.intelSignals[key])) {
@@ -186,26 +183,22 @@ app.post('/api/conversation', authenticateApiKey, async (req, res) => {
             });
         }
 
-        // Update scam detection
         if (response.scamDetected) {
             sessionData.scamDetected = true;
         }
 
-        // Add current exchange to session
         sessionData.messages.push({
             scammer: message.text,
             agent: response.reply,
             timestamp: message.timestamp || new Date().toISOString()
         });
 
-        // Store updated session
         sessions.set(sessionId, sessionData);
 
-        // Check if should terminate and send final result
+        // Final callback
         if (response.shouldTerminate || sessionData.messages.length >= 10) {
-            console.log('🎯 Conversation ending, sending final result to GUVI...');
+            console.log('🎯 Conversation ending, sending final result to callback...');
 
-            // Send final result to GUVI callback
             try {
                 const finalPayload = {
                     sessionId: sessionId,
@@ -215,20 +208,21 @@ app.post('/api/conversation', authenticateApiKey, async (req, res) => {
                     agentNotes: response.agentNotes || 'Conversation completed'
                 };
 
-                console.log('📤 Sending to GUVI:', JSON.stringify(finalPayload, null, 2));
+                // Use tester callback if provided, else fallback
+                const callbackUrlFromRequest = metadata?.callbackUrl;
+                const finalCallbackUrl = callbackUrlFromRequest || GUVI_CALLBACK_URL;
 
-                await sendFinalResultToGuvi(finalPayload);
+                console.log('📤 Sending to callback:', finalCallbackUrl);
+                console.log('📤 Payload:', JSON.stringify(finalPayload, null, 2));
+
+                await sendFinalResultToCallback(finalCallbackUrl, finalPayload);
             } catch (callbackError) {
-                console.error('❌ Failed to send callback to GUVI:', callbackError.message);
-                // Don't fail the main response if callback fails
+                console.error('❌ Failed to send callback:', callbackError.message);
             }
 
-            // Clean up session after sending
             setTimeout(() => sessions.delete(sessionId), 60000);
         }
 
-        // Return GUVI expected format (Strict Spec Compliance)
-        console.log('📤 Sending response to GUVI:', { status: 'success', reply: response.reply });
         res.json({
             status: 'success',
             reply: response.reply
@@ -237,8 +231,6 @@ app.post('/api/conversation', authenticateApiKey, async (req, res) => {
 
     } catch (error) {
         console.error('❌ ERROR in conversation handler:', error);
-        console.error('❌ Error message:', error.message);
-        console.error('❌ Error stack:', error.stack);
         res.status(500).json({
             status: 'error',
             message: 'Failed to process conversation request'
