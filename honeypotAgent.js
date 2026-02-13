@@ -460,114 +460,32 @@ ${intentList}`;
     };
   }
 
-  // NEW: deterministic detailed agentNotes builder
-  buildDetailedAgentNotes(intelSignals, combinedScammerText, turnNumber, scamDetected) {
-    const safe = (v) => Array.isArray(v) ? v.filter(Boolean) : [];
-    const join = (arr, empty = 'Not mentioned') => (arr.length ? arr.join(', ') : empty);
-
+  // NEW: concise analytical agentNotes (no extracted intel list)
+  buildAnalyticalAgentNotes(combinedScammerText, turnNumber) {
     const scamText = String(combinedScammerText || '');
-    let scamType = 'Unknown';
+
+    let scamType = 'Unknown scam pattern';
     if (/\b(otp|pin|password|cvv|mpin)\b/i.test(scamText)) scamType = 'OTP phishing';
-    else if (/\b(parcel|package|courier|india post|customs|consignment|tracking|awb|docket)\b/i.test(scamText)) scamType = 'India Post/Delivery';
-    else if (/\b(challan|traffic|violation|penalty|e-challan|vehicle|overspeed)\b/i.test(scamText)) scamType = 'Traffic challan';
-    else if (/\b(electricity|power|bill|disconnect|utility|consumer|ca number)\b/i.test(scamText)) scamType = 'Electricity bill';
-    else if (/\b(kyc|aadhaar|pan|update)\b/i.test(scamText)) scamType = 'KYC update';
-    else if (/\b(lottery|prize|lucky draw)\b/i.test(scamText)) scamType = 'Lottery/Prize';
-    else if (/\b(refund|income tax)\b/i.test(scamText)) scamType = 'Refund/Tax';
-    else if (/\b(anydesk|teamviewer|quicksupport|apk|remote)\b/i.test(scamText)) scamType = 'Remote access';
-    else if (/\b(transaction|unauthorized|debit|credit|upi)\b/i.test(scamText)) scamType = 'Bank account/UPI';
+    else if (/\b(parcel|package|courier|india post|customs|consignment|tracking|awb|docket)\b/i.test(scamText)) scamType = 'India Post/Delivery scam';
+    else if (/\b(challan|traffic|violation|penalty|e-challan|vehicle|overspeed)\b/i.test(scamText)) scamType = 'Traffic challan scam';
+    else if (/\b(electricity|power|bill|disconnect|utility|consumer|ca number)\b/i.test(scamText)) scamType = 'Electricity bill disconnection scam';
+    else if (/\b(kyc|aadhaar|pan|update)\b/i.test(scamText)) scamType = 'KYC update scam';
+    else if (/\b(lottery|prize|lucky draw)\b/i.test(scamText)) scamType = 'Lottery/Prize scam';
+    else if (/\b(refund|income tax)\b/i.test(scamText)) scamType = 'Refund/Tax scam';
+    else if (/\b(anydesk|teamviewer|quicksupport|apk|remote)\b/i.test(scamText)) scamType = 'Remote access scam';
+    else if (/\b(transaction|unauthorized|debit|credit|upi|account will be blocked)\b/i.test(scamText)) scamType = 'Bank account/UPI scam';
 
-    const urgencyMatches = scamText.match(/\b(urgent|immediately|right now|within \d+ (?:hour|minute)s?|in \d+ (?:hour|minute)s?|2 hours|24 hours|asap)\b/gi) || [];
-    const urgencyQuotes = urgencyMatches.length ? `"${[...new Set(urgencyMatches)].join('", "')}"` : 'None detected';
+    const urgency = /\b(urgent|immediately|right now|within \d+ (?:hour|minute)s?|2 hours|24 hours|asap|blocked|suspend)\b/i.test(scamText);
+    const asksSensitive = /\b(otp|pin|password|cvv|mpin|account number|upi pin)\b/i.test(scamText);
+    const linkPush = /\b(link|website|url|click|download|verify)\b/i.test(scamText);
 
-    const requests = [];
-    if (/\b(otp|pin|password|cvv|mpin)\b/i.test(scamText)) requests.push('OTP/PIN/password');
-    if (/\b(account number|acc.*no|bank.*details)\b/i.test(scamText)) requests.push('account details');
-    if (/\b(install|download|apk|anydesk|teamviewer)\b/i.test(scamText)) requests.push('app installation');
-    if (/\b(link|website|url)\b/i.test(scamText)) requests.push('link/website');
-    if (/\b(fee|payment|pay|charge)\b/i.test(scamText)) requests.push('fee/payment');
+    const reasons = [];
+    if (asksSensitive) reasons.push('requests for sensitive credentials');
+    if (urgency) reasons.push('pressure/urgency tactics');
+    if (linkPush) reasons.push('redirection to a link or verification site');
 
-    const threats = [];
-    if (/\b(block|blocked|suspend|suspended|freeze|frozen)\b/i.test(scamText)) threats.push('account blocked/suspended');
-    if (/\b(legal|police|fir|case)\b/i.test(scamText)) threats.push('legal action');
-    if (/\b(loss|lost|unauthorized|stolen)\b/i.test(scamText)) threats.push('money loss');
-
-    const redFlags = [];
-    if (/\b(otp|pin|password|cvv|mpin)\b/i.test(scamText)) redFlags.push('asked for OTP against policy');
-    if (urgencyMatches.length > 1) redFlags.push('extreme urgency');
-    if (/\b(anydesk|teamviewer|quicksupport|apk)\b/i.test(scamText)) redFlags.push('suspicious app request');
-
-    const emailAddresses = safe(intelSignals.emailAddresses);
-    const orgNames = safe(intelSignals.orgNames);
-    const emailDomains = emailAddresses.map(e => String(e).toLowerCase().split('@')[1] || '').filter(Boolean);
-
-    const orgMatchers = [
-      { match: (o) => o.includes('sbi') || o.includes('state bank'), hints: ['sbi', 'sbibank', 'onlinesbi'] },
-      { match: (o) => o.includes('hdfc'), hints: ['hdfc', 'hdfcbank'] },
-      { match: (o) => o.includes('icici'), hints: ['icici'] },
-      { match: (o) => o.includes('axis'), hints: ['axis', 'axisbank'] },
-      { match: (o) => o.includes('pnb') || o.includes('punjab national'), hints: ['pnb'] },
-      { match: (o) => o.includes('bank of baroda') || o.includes('bob') || o.includes('baroda'), hints: ['bob', 'bankofbaroda', 'baroda'] },
-      { match: (o) => o.includes('canara'), hints: ['canara'] },
-      { match: (o) => o.includes('union'), hints: ['unionbank', 'union'] },
-      { match: (o) => o.includes('kotak'), hints: ['kotak'] },
-      { match: (o) => o.includes('indusind'), hints: ['indusind'] },
-      { match: (o) => o.includes('boi') || o.includes('bank of india'), hints: ['boi', 'bankofindia'] }
-    ];
-
-    const orgInconsistencies = [];
-    const orgMatchesEmail = (orgName, emailAddr) => {
-      const orgLower = String(orgName || '').toLowerCase();
-      const domain = String(emailAddr || '').toLowerCase().split('@')[1] || '';
-      if (!orgLower || !domain) return true;
-      const matcher = orgMatchers.find(m => m.match(orgLower));
-      if (!matcher) return true;
-      return matcher.hints.some(h => domain.includes(h));
-    };
-
-    if (orgNames.length > 1) {
-      orgInconsistencies.push(`Multiple organizations claimed: ${orgNames.join(' vs ')}`);
-    }
-
-    if (orgNames.length && emailAddresses.length) {
-      orgNames.forEach(orgName => {
-        emailAddresses.forEach(emailAddr => {
-          if (!orgMatchesEmail(orgName, emailAddr)) {
-            orgInconsistencies.push(`Impersonated ${orgName} but used ${emailAddr}`);
-            redFlags.push(`claim mismatch (${orgName} vs ${emailAddr})`);
-          }
-        });
-      });
-    }
-
-    const parts = [];
-
-    parts.push(`${scamType} scam. Turn ${turnNumber}. Scam detected: ${scamDetected ? 'YES' : 'NO'}.`);
-
-    parts.push(`Scammer claimed name: ${join(safe(intelSignals.scammerNames), 'Unknown')}. Employee ID: ${join(safe(intelSignals.employeeIds), 'Not provided')}.`);
-    parts.push(`Organization: ${join(orgNames, 'Not specified')}. Department: ${join(safe(intelSignals.departmentNames), 'Not specified')}. Designation: ${join(safe(intelSignals.designations), 'Not specified')}. Supervisor: ${join(safe(intelSignals.supervisorNames), 'Not mentioned')}.`);
-
-    parts.push(`Contact details: Callback ${join(safe(intelSignals.callbackNumbers), 'Not provided')}, Phone ${join(safe(intelSignals.phoneNumbers), 'Not provided')}, Email ${join(emailAddresses, 'Not provided')}.`);
-
-    parts.push(`Payment/Account intel: UPI ${join(safe(intelSignals.upiIds), 'Not mentioned')}, Bank Account ${join(safe(intelSignals.bankAccounts), 'Not mentioned')}, Account Last4 ${join(safe(intelSignals.accountLast4), 'Not mentioned')}.`);
-
-    parts.push(`Transaction intel: ID ${join(safe(intelSignals.transactionIds), 'Not mentioned')}, Merchant ${join(safe(intelSignals.merchantNames), 'Not mentioned')}, Amount ${join(safe(intelSignals.amounts), 'Not mentioned')}.`);
-
-    parts.push(`Case/Ref/Tracking: Complaint/Ref ${join(safe(intelSignals.complaintIds), 'Not mentioned')}, Tracking ${join(safe(intelSignals.trackingIds), 'Not mentioned')}, Challan ${join(safe(intelSignals.challanNumbers), 'Not mentioned')}, Vehicle ${join(safe(intelSignals.vehicleNumbers), 'Not mentioned')}, Consumer ${join(safe(intelSignals.consumerNumbers), 'Not mentioned')}.`);
-
-    parts.push(`Links/Apps: Links ${join(safe(intelSignals.phishingLinks), 'None mentioned')}, Apps ${join(safe(intelSignals.appNames), 'None mentioned')}. IFSC ${join(safe(intelSignals.ifscCodes), 'Not provided')}.`);
-
-    parts.push(`Scammer requests: ${requests.length ? requests.join(', ') : 'None detected'}. Urgency: ${urgencyQuotes}. Threats: ${threats.length ? threats.join(', ') : 'None'}.`);
-
-    parts.push(`Suspicious keywords: ${join(safe(intelSignals.suspiciousKeywords), 'None')}.`);
-
-    parts.push(`Red flags: ${redFlags.length ? [...new Set(redFlags)].join(' / ') : 'None'}.`);
-
-    parts.push(`Bank/org inconsistencies: ${orgInconsistencies.length ? [...new Set(orgInconsistencies)].join(' / ') : 'None detected'}.`);
-
-    parts.push(`Summary: Scammer used ${urgencyMatches.length ? 'urgency tactics' : 'standard phrasing'} and attempted to obtain sensitive details${requests.length ? ' (' + requests.join(', ') + ')' : ''}.`);
-
-    return parts.join(' ');
+    const why = reasons.length ? reasons.join(' and ') : 'coercive verification cues';
+    return `${scamType} observed by turn ${turnNumber}. The interaction shows ${why}, which is consistent with common impersonation fraud patterns.`;
   }
 
   async generateResponse(scammerMessage, conversationHistory, nextIntent, stressScore) {
@@ -804,105 +722,7 @@ Later Scammer: "My supervisor is Mr. Kumar"
 → supervisorNames: ["Kumar"]  
 → scammerNames: ["Rajesh"] (stays the same!)
 
-DON'T confuse them!
-
-�🚨 CRITICAL SYSTEM BEHAVIOR RULES:
-
-1️⃣ EXTRACTION NEVER DROPS DATA (LOSSLESS):
-If scammer mentions ANY of these, IMMEDIATELY extract and NEVER overwrite/clear:
-- Case/Complaint/Ref ID (CASE/REF/CRN/####-####) → complaintIds
-- Transaction ID → transactionIds
-- Amount (₹/Rs/INR) → amounts
-- IFSC code → ifscCodes
-- Bank account (9-18 digits) → bankAccounts
-- UPI handle → upiIds
-- Email → emailAddresses
-- Phone number → callbackNumbers AND phoneNumbers (MIRROR to both!)
-
-2️⃣ STRICT CONTEXT-GATED QUESTIONS:
-❌ DON'T ask transaction questions (txn ID/amount/merchant) UNLESS scammer mentions: "transaction", "payment", "debit", "credit", "refund" OR already gave txn ID/amount
-❌ DON'T ask UPI questions UNLESS scammer mentions: "UPI", "collect request", "refund", "reversal", "payment steps"
-❌ DON'T ask app/software questions UNLESS scammer mentions: "install", "download", "guide you", "open app", "AnyDesk", "TeamViewer"
-✅ ONLY ask questions that NATURALLY FOLLOW from scammer's message
-
-3️⃣ BANK/ORG INCONSISTENCY DETECTION:
-If scammer says "SBI" but later provides HDFC IFSC/email/branch:
-- Record as "cross-bank inconsistency" in agentNotes
-- Do NOT accuse scammer in replies
-- Note this for analysis only
-
-4️⃣ 10-MESSAGE PRIORITY EXTRACTION:
-You have LIMITED TIME (10 messages max). Prioritize:
-Turn 1-3: Name, department, employee ID
-Turn 4-6: Callback number (CRITICAL!), case ID
-Turn 7-9: Email/domain, transaction details (if relevant)
-Turn 10: Payment handles (UPI/bank if mentioned)
-
-5️⃣ AGENT NOTES MUST MATCH INTELLIGENCE:
-- agentNotes MUST list EVERY field extracted in intelSignals
-- If extractedIntelligence has a value, agentNotes CANNOT say "not provided"
-- agentNotes must explicity mention: OTP demand, urgency tactics, unofficial contacts
-
-
-📝 COMPACT AGENT NOTES (NO LINE BREAKS - SINGLE PARAGRAPH):
-
-Write as ONE CONTINUOUS PARAGRAPH with ALL critical details:
-
-"[Scam type] scam. Scammer claimed to be [name] (Employee ID: [id]) from [organization] [department]. Supervisor: [name if mentioned]. Requested [OTP/PIN/account/app install/fee]. Used urgency: [quotes like '2 hours', 'immediately']. Threats: [account blocked/money lost/etc]. Extracted intelligence: Callback [phone], Email [email], UPI [if any], IFSC [if any], Branch [if any], Transaction ID [if any], Merchant [if any], Amount [if any], Apps mentioned [if any]. Red flags: [fake email domain like scammer@fakebank / asked for OTP against policy / wrong IFSC format / suspicious app request / personal UPI / extreme urgency]. Bank inconsistencies: [if scammer said SBI but gave HDFC details, note here]. Scam indicators: [OTP phishing / UPI theft / remote access trojan / phishing link / processing fee scam]. Summary: [2-3 sentence flow of how scam unfolded]."
-
-EXAMPLE COMPACT AGENT NOTES:
-
-"Bank account fraud with OTP phishing scam. Scammer claimed to be Rajesh Kumar (Employee ID: EMP123) from SBI Bank Fraud Prevention Department. Supervisor: Mr. Anil Singh. Requested OTP and account number to '  secure account'. Used urgency: 'Account will be blocked in 2 hours'. Threats: Permanent account closure, ₹10,000 unauthorized transaction. Extracted intelligence: Callback +91-9876543210, Email rajesh.fraud@fakebank.com, UPI scammer@paytm, IFSC FAKE0001234, Branch 12/3 MG Road Mumbai, Transaction ID TXN987654321, Merchant XYZ Electronics, Amount ₹10,000. Red flags: Fake email domain (fakebank.com instead of sbi.co.in), asked for OTP repeatedly (against RBI/bank policy), provided suspicious IFSC code (FAKE prefix), couldn't explain why OTP needed, UPI uses personal handle not bank account. Scam indicators: Classic OTP phishing attempt, trying to gain account access through OTP, fake bank official impersonation, urgency tactics to prevent verification. Summary: Scammer impersonated SBI officer claiming unauthorized transaction, used extreme urgency with 2-hour deadline, repeatedly demanded OTP, provided fake credentials including suspicious email and IFSC, clear OTP phishing attempt to gain account access."
-
-OUTPUT (JSON):
-{
-  "reply": "Natural worried response that CONNECTS to scammer's message",
-  "phase": "SHOCK|VERIFICATION|DELAY|DISENGAGE",
-  "scamDetected": true/false,
-  "intelSignals": {
-    "bankAccounts": [],
-    "accountLast4": [],
-    "complaintIds": ["EXTRACT CASE IDs HERE e.g. 4567AB"],
-    "employeeIds": [],
-    "phoneNumbers": ["MUST MATCH callbackNumbers"],
-    "callbackNumbers": [],
-    "upiIds": ["EXTRACT UPI LIKE scammer@bank"],
-    "phishingLinks": [],
-    "emailAddresses": [],
-    "appNames": [],
-    "transactionIds": [],
-    "merchantNames": [],
-    "amounts": ["EXTRACT ₹12,500"],
-    "ifscCodes": [],
-    "challanNumbers": ["Traffic challan e.g. TN04..."],
-    "trackingIds": ["Delivery tracking ID"],
-    "consumerNumbers": ["Electricity consumer no"],
-    "vehicleNumbers": ["Vehicle number"],
-    "departmentNames": [],
-    "designations": [],
-    "supervisorNames": [],
-    "scammerNames": [],
-    "orgNames": [],
-    "suspiciousKeywords": []
-  },
-  "agentNotes": "Scam type + scammer identity + what they wanted + urgency + ALL intel + red flags + scam indicators",
-  "shouldTerminate": false,
-  "terminationReason": ""
-}
-
-⚠️ FINAL EXTRACTION CHECKLIST (BEFORE GENERATING JSON):
-1. Did scammer mention a Case ID / Ref No? → Add to complaintIds
-2. Did scammer mention a UPI ID? → Add to upiIds
-3. Did I extract a Callback Number? → COPY IT into phoneNumbers too!
-4. Did scammer mention Amount? → Add to amounts
-5. Did scammer mention IFSC? → Add to ifscCodes
-6. Did scammer mention Email? → Add to emailAddresses
-7. Did text say "account number"/"acc no" followed by 9-18 digits? → Add to bankAccounts. (IGNORE phone numbers/employee IDs here!)
-NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!
-
-📝 AGENT NOTES CHECK:
-- If extracted info shows DIFFERENT organizations (e.g. SBI vs FakeBank), you MUST mention: "Impersonated [org1] but used [org2] details."
-- If UPI domain (@...) doesn't match claimed Bank (SBI vs @paytm), write "identity/UPI mismatch".`;
+DON'T confuse them!`;
 
     const allHoneypotQuestions = conversationHistory
       .map(msg => msg.agentReply || '')
@@ -1165,11 +985,9 @@ Generate JSON:`;
         scammerMessage || ''
       ].join(' ');
 
-      finalResponse.agentNotes = this.buildDetailedAgentNotes(
-        finalResponse.intelSignals,
+      finalResponse.agentNotes = this.buildAnalyticalAgentNotes(
         combinedScammerText,
-        turnNumber,
-        finalResponse.scamDetected
+        turnNumber
       );
 
       const finalizedResponse = this.applyDeterministicTermination(finalResponse, turnNumber);
