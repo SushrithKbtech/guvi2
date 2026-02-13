@@ -320,7 +320,6 @@ ${intentList}`;
       if (variants.length > 0) return variants[0];
     }
 
-    // Last resort should still avoid generic "what details do I provide" loops.
     return 'Can you please share your case ID once so I can verify this properly?';
   }
 
@@ -337,7 +336,7 @@ ${intentList}`;
       return "I'm a bit confused. Can you please share your employee ID for verification?";
     }
 
-    const questionTopics = this.extractQuestionTopics(reply); // topics only from question text
+    const questionTopics = this.extractQuestionTopics(reply);
     const repeatedQuestionTopicFound = [...questionTopics].some(topic => askedTopics.has(topic));
     const repeatedProcedure = questionTopics.has('procedure') && askedTopics.has('procedure');
 
@@ -348,7 +347,6 @@ ${intentList}`;
     const recentQuestions = this.getRecentQuestionSet(conversationHistory);
     const replacementQuestion = this.pickNonRepeatingQuestion(askedTopics, scammerMessage, conversationContext, recentQuestions);
 
-    // Preserve the model's original tone as much as possible: keep everything before the first question, then swap in a new question.
     const qMatch = /[^.!?]*\?/.exec(reply);
     const prefix = qMatch ? reply.slice(0, qMatch.index).trim() : reply.trim();
     const safePrefix = prefix || "Sir, I'm getting confused only";
@@ -461,11 +459,121 @@ ${intentList}`;
       terminationReason: response.terminationReason || `Deterministic stop: turn=${turnNumber}, criticalIntelSignals=${criticalIntelCount}`
     };
   }
+
+  // NEW: deterministic detailed agentNotes builder
+  buildDetailedAgentNotes(intelSignals, combinedScammerText, turnNumber, scamDetected) {
+    const safe = (v) => Array.isArray(v) ? v.filter(Boolean) : [];
+    const join = (arr, empty = 'Not mentioned') => (arr.length ? arr.join(', ') : empty);
+
+    const scamText = String(combinedScammerText || '');
+    let scamType = 'Unknown';
+    if (/\b(otp|pin|password|cvv|mpin)\b/i.test(scamText)) scamType = 'OTP phishing';
+    else if (/\b(parcel|package|courier|india post|customs|consignment|tracking|awb|docket)\b/i.test(scamText)) scamType = 'India Post/Delivery';
+    else if (/\b(challan|traffic|violation|penalty|e-challan|vehicle|overspeed)\b/i.test(scamText)) scamType = 'Traffic challan';
+    else if (/\b(electricity|power|bill|disconnect|utility|consumer|ca number)\b/i.test(scamText)) scamType = 'Electricity bill';
+    else if (/\b(kyc|aadhaar|pan|update)\b/i.test(scamText)) scamType = 'KYC update';
+    else if (/\b(lottery|prize|lucky draw)\b/i.test(scamText)) scamType = 'Lottery/Prize';
+    else if (/\b(refund|income tax)\b/i.test(scamText)) scamType = 'Refund/Tax';
+    else if (/\b(anydesk|teamviewer|quicksupport|apk|remote)\b/i.test(scamText)) scamType = 'Remote access';
+    else if (/\b(transaction|unauthorized|debit|credit|upi)\b/i.test(scamText)) scamType = 'Bank account/UPI';
+
+    const urgencyMatches = scamText.match(/\b(urgent|immediately|right now|within \d+ (?:hour|minute)s?|in \d+ (?:hour|minute)s?|2 hours|24 hours|asap)\b/gi) || [];
+    const urgencyQuotes = urgencyMatches.length ? `"${[...new Set(urgencyMatches)].join('", "')}"` : 'None detected';
+
+    const requests = [];
+    if (/\b(otp|pin|password|cvv|mpin)\b/i.test(scamText)) requests.push('OTP/PIN/password');
+    if (/\b(account number|acc.*no|bank.*details)\b/i.test(scamText)) requests.push('account details');
+    if (/\b(install|download|apk|anydesk|teamviewer)\b/i.test(scamText)) requests.push('app installation');
+    if (/\b(link|website|url)\b/i.test(scamText)) requests.push('link/website');
+    if (/\b(fee|payment|pay|charge)\b/i.test(scamText)) requests.push('fee/payment');
+
+    const threats = [];
+    if (/\b(block|blocked|suspend|suspended|freeze|frozen)\b/i.test(scamText)) threats.push('account blocked/suspended');
+    if (/\b(legal|police|fir|case)\b/i.test(scamText)) threats.push('legal action');
+    if (/\b(loss|lost|unauthorized|stolen)\b/i.test(scamText)) threats.push('money loss');
+
+    const redFlags = [];
+    if (/\b(otp|pin|password|cvv|mpin)\b/i.test(scamText)) redFlags.push('asked for OTP against policy');
+    if (urgencyMatches.length > 1) redFlags.push('extreme urgency');
+    if (/\b(anydesk|teamviewer|quicksupport|apk)\b/i.test(scamText)) redFlags.push('suspicious app request');
+
+    const emailAddresses = safe(intelSignals.emailAddresses);
+    const orgNames = safe(intelSignals.orgNames);
+    const emailDomains = emailAddresses.map(e => String(e).toLowerCase().split('@')[1] || '').filter(Boolean);
+
+    const orgMatchers = [
+      { match: (o) => o.includes('sbi') || o.includes('state bank'), hints: ['sbi', 'sbibank', 'onlinesbi'] },
+      { match: (o) => o.includes('hdfc'), hints: ['hdfc', 'hdfcbank'] },
+      { match: (o) => o.includes('icici'), hints: ['icici'] },
+      { match: (o) => o.includes('axis'), hints: ['axis', 'axisbank'] },
+      { match: (o) => o.includes('pnb') || o.includes('punjab national'), hints: ['pnb'] },
+      { match: (o) => o.includes('bank of baroda') || o.includes('bob') || o.includes('baroda'), hints: ['bob', 'bankofbaroda', 'baroda'] },
+      { match: (o) => o.includes('canara'), hints: ['canara'] },
+      { match: (o) => o.includes('union'), hints: ['unionbank', 'union'] },
+      { match: (o) => o.includes('kotak'), hints: ['kotak'] },
+      { match: (o) => o.includes('indusind'), hints: ['indusind'] },
+      { match: (o) => o.includes('boi') || o.includes('bank of india'), hints: ['boi', 'bankofindia'] }
+    ];
+
+    const orgInconsistencies = [];
+    const orgMatchesEmail = (orgName, emailAddr) => {
+      const orgLower = String(orgName || '').toLowerCase();
+      const domain = String(emailAddr || '').toLowerCase().split('@')[1] || '';
+      if (!orgLower || !domain) return true;
+      const matcher = orgMatchers.find(m => m.match(orgLower));
+      if (!matcher) return true;
+      return matcher.hints.some(h => domain.includes(h));
+    };
+
+    if (orgNames.length > 1) {
+      orgInconsistencies.push(`Multiple organizations claimed: ${orgNames.join(' vs ')}`);
+    }
+
+    if (orgNames.length && emailAddresses.length) {
+      orgNames.forEach(orgName => {
+        emailAddresses.forEach(emailAddr => {
+          if (!orgMatchesEmail(orgName, emailAddr)) {
+            orgInconsistencies.push(`Impersonated ${orgName} but used ${emailAddr}`);
+            redFlags.push(`claim mismatch (${orgName} vs ${emailAddr})`);
+          }
+        });
+      });
+    }
+
+    const parts = [];
+
+    parts.push(`${scamType} scam. Turn ${turnNumber}. Scam detected: ${scamDetected ? 'YES' : 'NO'}.`);
+
+    parts.push(`Scammer claimed name: ${join(safe(intelSignals.scammerNames), 'Unknown')}. Employee ID: ${join(safe(intelSignals.employeeIds), 'Not provided')}.`);
+    parts.push(`Organization: ${join(orgNames, 'Not specified')}. Department: ${join(safe(intelSignals.departmentNames), 'Not specified')}. Designation: ${join(safe(intelSignals.designations), 'Not specified')}. Supervisor: ${join(safe(intelSignals.supervisorNames), 'Not mentioned')}.`);
+
+    parts.push(`Contact details: Callback ${join(safe(intelSignals.callbackNumbers), 'Not provided')}, Phone ${join(safe(intelSignals.phoneNumbers), 'Not provided')}, Email ${join(emailAddresses, 'Not provided')}.`);
+
+    parts.push(`Payment/Account intel: UPI ${join(safe(intelSignals.upiIds), 'Not mentioned')}, Bank Account ${join(safe(intelSignals.bankAccounts), 'Not mentioned')}, Account Last4 ${join(safe(intelSignals.accountLast4), 'Not mentioned')}.`);
+
+    parts.push(`Transaction intel: ID ${join(safe(intelSignals.transactionIds), 'Not mentioned')}, Merchant ${join(safe(intelSignals.merchantNames), 'Not mentioned')}, Amount ${join(safe(intelSignals.amounts), 'Not mentioned')}.`);
+
+    parts.push(`Case/Ref/Tracking: Complaint/Ref ${join(safe(intelSignals.complaintIds), 'Not mentioned')}, Tracking ${join(safe(intelSignals.trackingIds), 'Not mentioned')}, Challan ${join(safe(intelSignals.challanNumbers), 'Not mentioned')}, Vehicle ${join(safe(intelSignals.vehicleNumbers), 'Not mentioned')}, Consumer ${join(safe(intelSignals.consumerNumbers), 'Not mentioned')}.`);
+
+    parts.push(`Links/Apps: Links ${join(safe(intelSignals.phishingLinks), 'None mentioned')}, Apps ${join(safe(intelSignals.appNames), 'None mentioned')}. IFSC ${join(safe(intelSignals.ifscCodes), 'Not provided')}.`);
+
+    parts.push(`Scammer requests: ${requests.length ? requests.join(', ') : 'None detected'}. Urgency: ${urgencyQuotes}. Threats: ${threats.length ? threats.join(', ') : 'None'}.`);
+
+    parts.push(`Suspicious keywords: ${join(safe(intelSignals.suspiciousKeywords), 'None')}.`);
+
+    parts.push(`Red flags: ${redFlags.length ? [...new Set(redFlags)].join(' / ') : 'None'}.`);
+
+    parts.push(`Bank/org inconsistencies: ${orgInconsistencies.length ? [...new Set(orgInconsistencies)].join(' / ') : 'None detected'}.`);
+
+    parts.push(`Summary: Scammer used ${urgencyMatches.length ? 'urgency tactics' : 'standard phrasing'} and attempted to obtain sensitive details${requests.length ? ' (' + requests.join(', ') + ')' : ''}.`);
+
+    return parts.join(' ');
+  }
+
   async generateResponse(scammerMessage, conversationHistory, nextIntent, stressScore) {
     const startTime = Date.now();
     console.log('⏱️ Agent.generateResponse started');
 
-    // Build conversation context
     const conversationContext = conversationHistory.slice(-5).map((msg, idx) =>
       `Turn ${idx + 1}:\nScammer: ${msg.scammerMessage}\nYou: ${msg.agentReply || '(first message)'}`
     ).join('\n\n');
@@ -796,12 +904,10 @@ NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!
 - If extracted info shows DIFFERENT organizations (e.g. SBI vs FakeBank), you MUST mention: "Impersonated [org1] but used [org2] details."
 - If UPI domain (@...) doesn't match claimed Bank (SBI vs @paytm), write "identity/UPI mismatch".`;
 
-    // BULLETPROOF MEMORY: Extract ACTUAL questions asked
     const allHoneypotQuestions = conversationHistory
       .map(msg => msg.agentReply || '')
       .join('\n');
 
-    // Extract actual question sentences
     const actualQuestionsAsked = [];
     conversationHistory.forEach((msg, idx) => {
       if (msg.agentReply) {
@@ -813,11 +919,9 @@ NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!
       }
     });
 
-    // Topic tracking with Set
     const alreadyAsked = [];
     const addedTopics = new Set();
 
-    // Check each question type with word boundaries for exact matching
     if (/\b(email|e-mail|email address)\b/i.test(allHoneypotQuestions) && !addedTopics.has('email')) {
       alreadyAsked.push('✗ email');
       addedTopics.add('email');
@@ -895,30 +999,22 @@ NEVER LEAVE THESE EMPTY IF PRESENT IN TEXT!
       addedTopics.add('consumer');
     }
 
-    // OTP tracking
     const mentionedOTP = /\b(otp|haven't received|didn't receive|not comfortable|don't want)\b/i.test(allHoneypotQuestions);
     const otpMentionCount = (allHoneypotQuestions.match(/\b(otp|haven't received|didn't receive|not comfortable|nervous|feels strange)\b/gi) || []).length;
 
-    // Scammer asking for OTP?
-    // STRICTER: Must match "OTP", "PIN", "Password", "CVV" directly OR "share code".
     const scammerAsksOTP = /\b(otp|pin|password|vmob|cvv|mpin)\b/i.test(scammerMessage) || /(?:share|provide|tell).{0,10}(?:code|number)/i.test(scammerMessage);
 
-    // HINT: Check for potential bank account numbers (9-18 digits) WITH CONTEXT
-    // Looks for "account", "acc", "no", "number" within reasonable distance of digits
     const accountContextRegex = /(?:account|acc|acct|a\/c)[\s\w.:#-]{0,20}?(\d{9,18})/gi;
     const matches = [...scammerMessage.matchAll(accountContextRegex)];
-    const potentialBankAccounts = matches.map(m => m[1]); // Extract only the number part
+    const potentialBankAccounts = matches.map(m => m[1]);
 
     const bankAccountHint = potentialBankAccounts.length > 0
       ? `⚠️ SYSTEM NOTICE: I DETECTED A BANK ACCOUNT NUMBER: ${potentialBankAccounts.join(', ')} (based on 'account' keyword). ADD TO 'bankAccounts'! (Ignore if it's a phone number)`
       : '';
 
-    // Check for REAL money mention (symbols, currency words). 
-    // EXCLUDES simple numbers or phone numbers (requires currency context).
     const moneyMentioned = /(?:rs\.?|inr|rupees|₹|\$|usd)\s*[\d,.]+[k]?/i.test(scammerMessage) ||
       /(?:amount|fee|charge|bill|balance).{0,15}?[\d,.]+[k]?/i.test(scammerMessage);
 
-    // Check for merchant mention
     const merchantMentioned = /(?:merchant|store|shop|amazon|flipkart|myntra|paytm|ebay|google pay)/i.test(scammerMessage);
 
     const userPrompt = `CONVERSATION SO FAR:
@@ -1062,6 +1158,18 @@ Generate JSON:`;
         scammerMessage,
         conversationContext,
         conversationHistory
+      );
+
+      const combinedScammerText = [
+        ...(conversationHistory || []).map(msg => msg.scammerMessage || ''),
+        scammerMessage || ''
+      ].join(' ');
+
+      finalResponse.agentNotes = this.buildDetailedAgentNotes(
+        finalResponse.intelSignals,
+        combinedScammerText,
+        turnNumber,
+        finalResponse.scamDetected
       );
 
       const finalizedResponse = this.applyDeterministicTermination(finalResponse, turnNumber);
